@@ -664,33 +664,32 @@ class DocumentGallery {
             
             this.showMessage('✅ Sync completed successfully!', 'success');
         } catch (error) {
-            console.error('Swamp sync error:', error);
+            console.error('Sync error:', error);
             this.showMessage(`Sync failed: ${error.message}`, 'error');
         }
     }
     
     async syncWithSwamp(swampKey, swampLocation) {
-        // Retry logic for the entire sync process
-        for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-                // Get current file state
-                let sha = null;
-                let remoteData = null;
-                
-                const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-                    headers: {
-                        'Authorization': `Bearer ${swampKey}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                });
-                
-                if (checkResponse.ok) {
-                    const result = await checkResponse.json();
-                    sha = result.sha;
-                    remoteData = JSON.parse(atob(result.content));
+        // Try to delete and recreate the file if it exists
+        // This avoids SHA conflicts entirely
+        try {
+            // First, try to get the file to see if it exists
+            const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                headers: {
+                    'Authorization': `Bearer ${swampKey}`,
+                    'Accept': 'application/vnd.github.v3+json'
                 }
+            });
+            
+            let remoteData = null;
+            let sha = null;
+            
+            if (checkResponse.ok) {
+                const result = await checkResponse.json();
+                sha = result.sha;
+                remoteData = JSON.parse(atob(result.content));
                 
-                // Merge remote data with local data
+                // Merge remote data with local data first
                 if (remoteData && remoteData.documents) {
                     const remoteDocuments = remoteData.documents;
                     const localDocuments = this.documents;
@@ -709,60 +708,60 @@ class DocumentGallery {
                     this.displayImages();
                 }
                 
-                // Prepare upload data with fresh timestamps
-                Object.keys(this.documents).forEach(docId => {
-                    this.documents[docId].lastModified = new Date().toISOString();
-                });
-
-                const uploadData = {
-                    documents: this.documents,
-                    lastSync: new Date().toISOString(),
-                    version: '1.0'
-                };
-                
-                const content = btoa(JSON.stringify(uploadData, null, 2));
-                
-                const requestBody = {
-                    message: 'Update gallery data',
-                    content: content,
-                    branch: 'main'
-                };
-                
-                if (sha) {
-                    requestBody.sha = sha;
-                }
-
-                // Upload with the SHA we just got
-                const uploadResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-                    method: 'PUT',
+                // Delete the existing file to avoid SHA conflicts
+                await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                    method: 'DELETE',
                     headers: {
                         'Authorization': `Bearer ${swampKey}`,
                         'Accept': 'application/vnd.github.v3+json',
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify({
+                        message: 'Delete gallery data for update',
+                        sha: sha,
+                        branch: 'main'
+                    })
                 });
+                
+                // Small delay to ensure deletion is processed
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            // Prepare fresh upload data
+            Object.keys(this.documents).forEach(docId => {
+                this.documents[docId].lastModified = new Date().toISOString();
+            });
 
-                if (uploadResponse.ok) {
-                    return; // Success!
-                }
-                
-                if (uploadResponse.status === 409 && attempt < 2) {
-                    console.log(`Sync conflict, retrying... (attempt ${attempt + 1})`);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    continue;
-                }
-                
+            const uploadData = {
+                documents: this.documents,
+                lastSync: new Date().toISOString(),
+                version: '1.0'
+            };
+            
+            const content = btoa(JSON.stringify(uploadData, null, 2));
+            
+            // Create the file fresh (no SHA needed)
+            const uploadResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${swampKey}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: 'Update gallery data',
+                    content: content,
+                    branch: 'main'
+                })
+            });
+
+            if (!uploadResponse.ok) {
                 const error = await uploadResponse.json();
                 throw new Error(error.message || 'Failed to sync data');
-                
-            } catch (e) {
-                if (attempt === 2) {
-                    throw e;
-                }
-                console.log(`Sync error, retrying... (attempt ${attempt + 1}):`, e.message);
-                await new Promise(resolve => setTimeout(resolve, 1000));
             }
+            
+        } catch (error) {
+            throw new Error(`Sync failed: ${error.message}`);
         }
     }
     
