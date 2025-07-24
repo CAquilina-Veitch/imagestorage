@@ -761,26 +761,44 @@ class DocumentGallery {
                 if (checkResponse.ok) {
                     const responseText = await checkResponse.text();
                     console.log('API Response length:', responseText.length);
-                    console.log('API Response preview:', responseText.substring(0, 200));
                     
                     if (responseText && responseText.trim()) {
                         try {
                             const result = JSON.parse(responseText);
                             sha = result.sha;
                             console.log('Got SHA:', sha);
+                            console.log('File size:', result.size);
                             
-                            if (result.content) {
+                            // If content is empty but file exists, it's too large for API
+                            if (!result.content && result.download_url) {
+                                console.log('File too large for API, using download URL');
+                                
+                                // Download file directly
+                                const downloadResponse = await fetch(result.download_url);
+                                if (downloadResponse.ok) {
+                                    const fileContent = await downloadResponse.text();
+                                    console.log('Downloaded file content length:', fileContent.length);
+                                    
+                                    if (fileContent && fileContent.trim()) {
+                                        try {
+                                            remoteData = JSON.parse(fileContent);
+                                            console.log('Successfully parsed remote data from download');
+                                        } catch (downloadParseError) {
+                                            console.error('Failed to parse downloaded content:', downloadParseError);
+                                        }
+                                    }
+                                }
+                            } else if (result.content) {
+                                // File small enough to be included inline
                                 const decodedContent = atob(result.content);
                                 console.log('Decoded content length:', decodedContent.length);
-                                console.log('Decoded content preview:', decodedContent.substring(0, 100));
                                 
                                 if (decodedContent && decodedContent.trim()) {
                                     try {
                                         remoteData = JSON.parse(decodedContent);
-                                        console.log('Successfully parsed remote data');
+                                        console.log('Successfully parsed remote data from API content');
                                     } catch (contentParseError) {
                                         console.error('Failed to parse file content:', contentParseError);
-                                        console.log('Raw content:', decodedContent);
                                     }
                                 }
                             }
