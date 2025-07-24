@@ -2,6 +2,7 @@ class DocumentGallery {
     constructor() {
         this.documents = {};
         this.currentDocumentId = null;
+        this.githubSettings = this.loadGitHubSettings();
         this.init();
     }
 
@@ -24,10 +25,12 @@ class DocumentGallery {
         // Download
         document.getElementById('downloadAll').addEventListener('click', () => this.downloadAllImages());
         
-        // Export/Import
-        document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
-        document.getElementById('importBtn').addEventListener('click', () => this.triggerImport());
-        document.getElementById('importFile').addEventListener('change', (e) => this.handleImport(e));
+        // GitHub Sync
+        document.getElementById('syncBtn').addEventListener('click', () => this.syncWithGitHub());
+        document.getElementById('settingsBtn').addEventListener('click', () => this.openSettingsModal());
+        document.getElementById('closeSettingsModal').addEventListener('click', () => this.closeSettingsModal());
+        document.getElementById('testConnection').addEventListener('click', () => this.testGitHubConnection());
+        document.getElementById('saveSettings').addEventListener('click', () => this.saveGitHubSettings());
         
         // Upload area drag and drop
         const uploadArea = document.getElementById('uploadArea');
@@ -423,74 +426,232 @@ class DocumentGallery {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    exportData() {
-        const data = {
-            documents: this.documents,
-            exportDate: new Date().toISOString(),
-            version: '1.0'
-        };
-        
-        const dataStr = JSON.stringify(data, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(dataBlob);
-        link.download = `document-gallery-backup-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        this.showMessage('Data exported successfully! Share this file to sync across devices.', 'success');
-    }
-    
-    triggerImport() {
-        document.getElementById('importFile').click();
-    }
-    
-    handleImport(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
+    loadGitHubSettings() {
+        const stored = localStorage.getItem('githubSettings');
+        if (stored) {
             try {
-                const data = JSON.parse(e.target.result);
-                
-                // Validate data structure
-                if (!data.documents || typeof data.documents !== 'object') {
-                    throw new Error('Invalid backup file format');
+                return JSON.parse(stored);
+            } catch (e) {
+                console.error('Error loading GitHub settings:', e);
+            }
+        }
+        return {
+            owner: '',
+            repo: '',
+            branch: 'main',
+            token: ''
+        };
+    }
+
+    saveGitHubSettings() {
+        const settings = {
+            owner: document.getElementById('repoOwner').value.trim(),
+            repo: document.getElementById('repoName').value.trim(),
+            branch: document.getElementById('repoBranch').value.trim() || 'main',
+            token: document.getElementById('githubToken').value.trim()
+        };
+
+        if (!settings.owner || !settings.repo || !settings.token) {
+            this.showConnectionStatus('Please fill in all required fields', 'error');
+            return;
+        }
+
+        this.githubSettings = settings;
+        localStorage.setItem('githubSettings', JSON.stringify(settings));
+        this.showConnectionStatus('Settings saved successfully!', 'success');
+        
+        setTimeout(() => {
+            this.closeSettingsModal();
+        }, 1500);
+    }
+
+    openSettingsModal() {
+        // Populate current settings
+        document.getElementById('repoOwner').value = this.githubSettings.owner;
+        document.getElementById('repoName').value = this.githubSettings.repo;
+        document.getElementById('repoBranch').value = this.githubSettings.branch;
+        document.getElementById('githubToken').value = this.githubSettings.token;
+        
+        document.getElementById('settingsModal').classList.remove('hidden');
+    }
+
+    closeSettingsModal() {
+        document.getElementById('settingsModal').classList.add('hidden');
+        document.getElementById('connectionStatus').textContent = '';
+        document.getElementById('connectionStatus').className = 'connection-status';
+    }
+
+    async testGitHubConnection() {
+        const settings = {
+            owner: document.getElementById('repoOwner').value.trim(),
+            repo: document.getElementById('repoName').value.trim(),
+            branch: document.getElementById('repoBranch').value.trim() || 'main',
+            token: document.getElementById('githubToken').value.trim()
+        };
+
+        if (!settings.owner || !settings.repo || !settings.token) {
+            this.showConnectionStatus('Please fill in all required fields', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`https://api.github.com/repos/${settings.owner}/${settings.repo}`, {
+                headers: {
+                    'Authorization': `token ${settings.token}`,
+                    'Accept': 'application/vnd.github.v3+json'
                 }
+            });
+
+            if (response.ok) {
+                this.showConnectionStatus('✅ Connection successful!', 'success');
+            } else {
+                const error = await response.json();
+                this.showConnectionStatus(`❌ ${error.message || 'Connection failed'}`, 'error');
+            }
+        } catch (error) {
+            this.showConnectionStatus(`❌ Network error: ${error.message}`, 'error');
+        }
+    }
+
+    showConnectionStatus(message, type) {
+        const statusEl = document.getElementById('connectionStatus');
+        statusEl.textContent = message;
+        statusEl.className = `connection-status ${type}`;
+    }
+
+    async syncWithGitHub() {
+        if (!this.githubSettings.owner || !this.githubSettings.repo || !this.githubSettings.token) {
+            this.showMessage('Please configure GitHub settings first', 'error');
+            this.openSettingsModal();
+            return;
+        }
+
+        this.showMessage('Syncing with GitHub...', 'info');
+
+        try {
+            // First, try to download existing data
+            await this.downloadFromGitHub();
+            
+            // Then upload current data
+            await this.uploadToGitHub();
+            
+            this.showMessage('✅ Sync completed successfully!', 'success');
+        } catch (error) {
+            console.error('Sync error:', error);
+            this.showMessage(`Sync failed: ${error.message}`, 'error');
+        }
+    }
+
+    async downloadFromGitHub() {
+        const { owner, repo, branch, token } = this.githubSettings;
+        const filePath = 'data/gallery-data.json';
+
+        try {
+            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            if (response.ok) {
+                const fileData = await response.json();
+                const content = JSON.parse(atob(fileData.content));
                 
-                const importedCount = Object.keys(data.documents).length;
-                let totalImages = 0;
-                
-                // Count total images
-                Object.values(data.documents).forEach(doc => {
-                    if (doc.images && Array.isArray(doc.images)) {
-                        totalImages += doc.images.length;
-                    }
-                });
-                
-                if (confirm(`Import ${importedCount} documents with ${totalImages} images? This will replace all current data.`)) {
-                    this.documents = data.documents;
-                    this.currentDocumentId = null;
+                if (content.documents) {
+                    // Merge remote data with local data
+                    const remoteDocuments = content.documents;
+                    const localDocuments = this.documents;
+                    
+                    // Simple merge strategy: remote wins for conflicts
+                    Object.keys(remoteDocuments).forEach(docId => {
+                        if (!localDocuments[docId] || 
+                            new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
+                            localDocuments[docId] = remoteDocuments[docId];
+                        }
+                    });
+                    
+                    this.documents = localDocuments;
                     this.saveDocuments();
                     this.renderDocumentList();
-                    this.updateHeaderAndButtons();
                     this.displayImages();
-                    
-                    this.showMessage(`Successfully imported ${importedCount} documents with ${totalImages} images!`, 'success');
                 }
-            } catch (error) {
-                console.error('Import error:', error);
-                this.showMessage('Failed to import data. Please check the file format.', 'error');
+            } else if (response.status !== 404) {
+                // 404 is fine (file doesn't exist yet), other errors are problems
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to download from GitHub');
             }
-            
-            // Clear the file input
-            event.target.value = '';
+        } catch (error) {
+            if (error.message.includes('404')) {
+                // File doesn't exist yet, that's fine
+                return;
+            }
+            throw error;
+        }
+    }
+
+    async uploadToGitHub() {
+        const { owner, repo, branch, token } = this.githubSettings;
+        const filePath = 'data/gallery-data.json';
+
+        // Add lastModified timestamps
+        Object.keys(this.documents).forEach(docId => {
+            this.documents[docId].lastModified = new Date().toISOString();
+        });
+
+        const data = {
+            documents: this.documents,
+            lastSync: new Date().toISOString(),
+            version: '1.0'
         };
-        
-        reader.readAsText(file);
+
+        const content = btoa(JSON.stringify(data, null, 2));
+
+        try {
+            // Check if file exists to get SHA
+            let sha = null;
+            try {
+                const existingResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
+                    headers: {
+                        'Authorization': `token ${token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                if (existingResponse.ok) {
+                    const existingFile = await existingResponse.json();
+                    sha = existingFile.sha;
+                }
+            } catch (e) {
+                // File doesn't exist, that's fine
+            }
+
+            const uploadData = {
+                message: `Update gallery data - ${new Date().toISOString()}`,
+                content: content,
+                branch: branch
+            };
+
+            if (sha) {
+                uploadData.sha = sha;
+            }
+
+            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(uploadData)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to upload to GitHub');
+            }
+        } catch (error) {
+            throw new Error(`Upload failed: ${error.message}`);
+        }
     }
 
     showMessage(message, type = 'info') {

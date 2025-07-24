@@ -13,9 +13,8 @@
                 <h2>Documents</h2>
                 <button id="newDocumentBtn" class="new-document-btn">+ New Document</button>
                 <div class="sync-actions">
-                    <button id="exportBtn" class="sync-btn" title="Export data">📤 Export</button>
-                    <button id="importBtn" class="sync-btn" title="Import data">📥 Import</button>
-                    <input type="file" id="importFile" accept=".json" style="display: none;">
+                    <button id="syncBtn" class="sync-btn" title="Auto-sync with GitHub">🔄 Sync</button>
+                    <button id="settingsBtn" class="sync-btn" title="GitHub Settings">⚙️ Setup</button>
                 </div>
             </div>
             
@@ -68,6 +67,37 @@
                     </div>
                     <p id="progressText">Uploading...</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GitHub Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>GitHub Sync Setup</h3>
+                <button id="closeSettingsModal" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4>Repository Information</h4>
+                    <input type="text" id="repoOwner" placeholder="GitHub username (e.g., yourusername)" class="settings-input">
+                    <input type="text" id="repoName" placeholder="Repository name (e.g., imagestorage)" class="settings-input">
+                    <input type="text" id="repoBranch" placeholder="Branch (default: main)" class="settings-input" value="main">
+                </div>
+                
+                <div class="settings-section">
+                    <h4>Access Token</h4>
+                    <p class="settings-help">Create a Personal Access Token with 'repo' permissions at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></p>
+                    <input type="password" id="githubToken" placeholder="GitHub Personal Access Token" class="settings-input">
+                </div>
+                
+                <div class="settings-actions">
+                    <button id="testConnection" class="test-btn">Test Connection</button>
+                    <button id="saveSettings" class="save-btn">Save Settings</button>
+                </div>
+                
+                <div id="connectionStatus" class="connection-status"></div>
             </div>
         </div>
     </div>
