@@ -24,6 +24,11 @@ class DocumentGallery {
         // Download
         document.getElementById('downloadAll').addEventListener('click', () => this.downloadAllImages());
         
+        // Export/Import
+        document.getElementById('exportBtn').addEventListener('click', () => this.exportData());
+        document.getElementById('importBtn').addEventListener('click', () => this.triggerImport());
+        document.getElementById('importFile').addEventListener('change', (e) => this.handleImport(e));
+        
         // Upload area drag and drop
         const uploadArea = document.getElementById('uploadArea');
         uploadArea.addEventListener('click', () => this.triggerFileSelect());
@@ -416,6 +421,76 @@ class DocumentGallery {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    exportData() {
+        const data = {
+            documents: this.documents,
+            exportDate: new Date().toISOString(),
+            version: '1.0'
+        };
+        
+        const dataStr = JSON.stringify(data, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(dataBlob);
+        link.download = `document-gallery-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        this.showMessage('Data exported successfully! Share this file to sync across devices.', 'success');
+    }
+    
+    triggerImport() {
+        document.getElementById('importFile').click();
+    }
+    
+    handleImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                
+                // Validate data structure
+                if (!data.documents || typeof data.documents !== 'object') {
+                    throw new Error('Invalid backup file format');
+                }
+                
+                const importedCount = Object.keys(data.documents).length;
+                let totalImages = 0;
+                
+                // Count total images
+                Object.values(data.documents).forEach(doc => {
+                    if (doc.images && Array.isArray(doc.images)) {
+                        totalImages += doc.images.length;
+                    }
+                });
+                
+                if (confirm(`Import ${importedCount} documents with ${totalImages} images? This will replace all current data.`)) {
+                    this.documents = data.documents;
+                    this.currentDocumentId = null;
+                    this.saveDocuments();
+                    this.renderDocumentList();
+                    this.updateHeaderAndButtons();
+                    this.displayImages();
+                    
+                    this.showMessage(`Successfully imported ${importedCount} documents with ${totalImages} images!`, 'success');
+                }
+            } catch (error) {
+                console.error('Import error:', error);
+                this.showMessage('Failed to import data. Please check the file format.', 'error');
+            }
+            
+            // Clear the file input
+            event.target.value = '';
+        };
+        
+        reader.readAsText(file);
     }
 
     showMessage(message, type = 'info') {

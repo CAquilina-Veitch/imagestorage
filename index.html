@@ -12,6 +12,11 @@
             <div class="sidebar-header">
                 <h2>Documents</h2>
                 <button id="newDocumentBtn" class="new-document-btn">+ New Document</button>
+                <div class="sync-actions">
+                    <button id="exportBtn" class="sync-btn" title="Export data">📤 Export</button>
+                    <button id="importBtn" class="sync-btn" title="Import data">📥 Import</button>
+                    <input type="file" id="importFile" accept=".json" style="display: none;">
+                </div>
             </div>
             
             <div class="document-list" id="documentList">
