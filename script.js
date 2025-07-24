@@ -43,8 +43,22 @@ class DocumentGallery {
         document.getElementById('syncBtn').addEventListener('click', () => this.feedSwamp());
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSwampSetup());
         document.getElementById('closeSettingsModal').addEventListener('click', () => this.closeSwampSetup());
-        document.getElementById('setupSync').addEventListener('click', () => this.activateSwamp());
-        document.getElementById('disconnectSync').addEventListener('click', () => this.drainSwamp());
+        
+        // Setup sync with error handling
+        const setupBtn = document.getElementById('setupSync');
+        if (setupBtn) {
+            setupBtn.addEventListener('click', () => {
+                console.log('Setup button clicked');
+                this.activateSwamp();
+            });
+        } else {
+            console.error('Setup button not found');
+        }
+        
+        const disconnectBtn = document.getElementById('disconnectSync');
+        if (disconnectBtn) {
+            disconnectBtn.addEventListener('click', () => this.drainSwamp());
+        }
         
         // Upload area drag and drop
         const uploadArea = document.getElementById('uploadArea');
