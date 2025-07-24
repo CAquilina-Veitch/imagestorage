@@ -267,6 +267,7 @@ class DocumentGallery {
             const imageActions = document.createElement('div');
             imageActions.className = 'image-actions';
             imageActions.innerHTML = `
+                <button onclick="documentGallery.downloadSingleImage(${index})" title="Download">📥</button>
                 <button onclick="documentGallery.deleteImage(${index})" title="Delete">🗑️</button>
             `;
             
@@ -416,6 +417,28 @@ class DocumentGallery {
         });
 
         this.showMessage(`Downloaded ${images.length} image(s) from "${doc.name}"`, 'success');
+    }
+
+    downloadSingleImage(index) {
+        if (!this.currentDocumentId) return;
+        
+        const doc = this.documents[this.currentDocumentId];
+        const images = doc.images;
+        
+        if (!images[index]) {
+            this.showMessage('Image not found', 'error');
+            return;
+        }
+
+        const imageInfo = images[index];
+        const link = document.createElement('a');
+        link.href = imageInfo.url;
+        link.download = imageInfo.name || `${doc.name}_image_${index + 1}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        this.showMessage(`Downloaded: ${imageInfo.name}`, 'success');
     }
 
     formatFileSize(bytes) {
