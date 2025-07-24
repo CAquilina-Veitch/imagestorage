@@ -3,6 +3,7 @@ class DocumentGallery {
         this.documents = {};
         this.currentDocumentId = null;
         this.githubSettings = this.loadGitHubSettings();
+        this.isUploading = false;  // Track upload state
         this.init();
     }
 
@@ -34,7 +35,6 @@ class DocumentGallery {
         
         // Upload area drag and drop
         const uploadArea = document.getElementById('uploadArea');
-        uploadArea.addEventListener('click', () => this.triggerFileSelect());
         uploadArea.addEventListener('dragover', (e) => this.handleDragOver(e));
         uploadArea.addEventListener('dragleave', (e) => this.handleDragLeave(e));
         uploadArea.addEventListener('drop', (e) => this.handleDrop(e));
@@ -310,17 +310,31 @@ class DocumentGallery {
 
     closeUploadModal() {
         document.getElementById('uploadModal').classList.add('hidden');
+        this.isUploading = false;  // Reset upload state when modal closes
         this.resetUploadModal();
     }
 
     resetUploadModal() {
-        document.getElementById('imageUpload').value = '';
         document.getElementById('uploadProgress').classList.add('hidden');
         document.getElementById('uploadArea').classList.remove('hidden');
         document.getElementById('progressFill').style.width = '0%';
+        
+        // Reset upload button state
+        const selectFilesBtn = document.getElementById('selectFiles');
+        selectFilesBtn.disabled = false;
+        selectFilesBtn.textContent = 'Select Files';
+        selectFilesBtn.style.opacity = '1';
+    }
+
+    clearFileInput() {
+        document.getElementById('imageUpload').value = '';
     }
 
     triggerFileSelect() {
+        if (this.isUploading) {
+            this.showMessage('Please wait for current upload to complete', 'info');
+            return;
+        }
         document.getElementById('imageUpload').click();
     }
 
@@ -348,15 +362,27 @@ class DocumentGallery {
     processFiles(files) {
         if (!this.currentDocumentId || files.length === 0) return;
 
+        if (this.isUploading) {
+            this.showMessage('Upload already in progress', 'info');
+            return;
+        }
+
         const imageFiles = files.filter(file => file.type.startsWith('image/'));
         if (imageFiles.length === 0) {
             this.showMessage('No valid image files selected', 'error');
             return;
         }
 
-        // Show progress
+        // Set upload state and show progress
+        this.isUploading = true;
         document.getElementById('uploadArea').classList.add('hidden');
         document.getElementById('uploadProgress').classList.remove('hidden');
+        
+        // Disable upload button during processing
+        const selectFilesBtn = document.getElementById('selectFiles');
+        selectFilesBtn.disabled = true;
+        selectFilesBtn.textContent = 'Processing...';
+        selectFilesBtn.style.opacity = '0.6';
         
         const doc = this.documents[this.currentDocumentId];
         let processedCount = 0;
@@ -385,6 +411,8 @@ class DocumentGallery {
                     this.saveDocuments();
                     this.displayImages();
                     this.renderDocumentList();
+                    this.clearFileInput();  // Clear file input after successful processing
+                    this.isUploading = false;  // Reset upload state
                     this.showMessage(`Successfully uploaded ${totalFiles} image(s)`, 'success');
                     
                     setTimeout(() => {
