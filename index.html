@@ -71,7 +71,7 @@
         </div>
     </div>
 
-    <!-- GitHub Settings Modal -->
+    <!-- Sync Setup Modal -->
     <div id="settingsModal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
@@ -80,38 +80,17 @@
             </div>
             <div class="modal-body">
                 <div class="settings-section">
-                    <h4>Join Existing Sync Group</h4>
-                    <p class="settings-help">Enter a sync code to merge data from another device. Note: Both devices need to have the same sync code in their local storage.</p>
-                    <input type="text" id="syncCodeInput" placeholder="Enter 6-digit sync code (e.g., ABC123)" class="settings-input" maxlength="6" style="text-transform: uppercase;">
-                    <button id="joinSyncGroup" class="join-btn">Join Sync Group</button>
-                </div>
-                
-                <div class="settings-divider">
-                    <span>OR</span>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Create New Sync Group</h4>
-                    <p class="settings-help">Create a sync code for sharing data between devices. Use the same code on multiple devices to keep them in sync:</p>
-                    <button id="createSyncGroup" class="create-btn">Create New Sync Code</button>
-                    <div id="newSyncCode" class="sync-code-display hidden">
-                        <p>Your sync code:</p>
-                        <div class="sync-code-box">
-                            <span id="generatedCode"></span>
-                            <button id="copySyncCode" class="copy-btn" title="Copy to clipboard">📋</button>
-                        </div>
-                        <p class="settings-help">Use this code on your other devices to sync data. The sync works through browser localStorage on each device.</p>
-                    </div>
+                    <h4>Gallery Access Setup</h4>
+                    <p class="settings-help">Enter your access code to enable syncing with the shared gallery:</p>
+                    <input type="password" id="accessCodeInput" placeholder="Enter access code" class="settings-input">
+                    <button id="setupSync" class="create-btn">Setup Sync</button>
                 </div>
                 
                 <div class="current-sync-status">
                     <div id="currentSyncInfo" class="hidden">
-                        <h4>Current Sync Group</h4>
-                        <div class="sync-code-box">
-                            <span id="currentSyncCode"></span>
-                            <button id="copyCurrentCode" class="copy-btn" title="Copy to clipboard">📋</button>
-                            <button id="leaveSyncGroup" class="leave-btn" title="Leave sync group">🚪</button>
-                        </div>
+                        <h4>Sync Status</h4>
+                        <p>✅ Sync is active - you can now sync with the shared gallery</p>
+                        <button id="disconnectSync" class="leave-btn">Disconnect</button>
                     </div>
                 </div>
                 

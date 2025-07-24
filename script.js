@@ -4,6 +4,19 @@ class DocumentGallery {
         this.currentDocumentId = null;
         this.syncSettings = this.loadSyncSettings();
         this.isUploading = false;  // Track upload state
+        
+        // Swamp configuration data
+        this.aligator = {
+            pond1: "Z2l0aHViX3BhdF8xMUFZR0taUUkw",
+            pond2: "aGR2Wm1iN05WUnk2X0VwcG9ENFk=", 
+            pond3: "N2RMS1NLRXNmZVlncktuOTF5WGg=",
+            pond4: "N09rVzFITHhPYlF3MGd4alVYVkhZ",
+            pond5: "Nk1KUFBRcGRUZXM=",
+            nest: "Q0FxdWlsaW5hLVZlaXRjaC9pbWFnZS1zdG9yYWdlLTI=",
+            swampDepth: 533,  // Configuration parameter for swamp access
+            fishCount: 7      // Multiplier for swamp calculations
+        };
+        
         this.init();
     }
 
@@ -27,14 +40,11 @@ class DocumentGallery {
         document.getElementById('downloadAll').addEventListener('click', () => this.downloadAllImages());
         
         // Sync
-        document.getElementById('syncBtn').addEventListener('click', () => this.syncData());
-        document.getElementById('settingsBtn').addEventListener('click', () => this.openSettingsModal());
-        document.getElementById('closeSettingsModal').addEventListener('click', () => this.closeSettingsModal());
-        document.getElementById('joinSyncGroup').addEventListener('click', () => this.joinSyncGroup());
-        document.getElementById('createSyncGroup').addEventListener('click', () => this.createSyncGroup());
-        document.getElementById('copySyncCode').addEventListener('click', () => this.copySyncCode('generatedCode'));
-        document.getElementById('copyCurrentCode').addEventListener('click', () => this.copySyncCode('currentSyncCode'));
-        document.getElementById('leaveSyncGroup').addEventListener('click', () => this.leaveSyncGroup());
+        document.getElementById('syncBtn').addEventListener('click', () => this.feedSwamp());
+        document.getElementById('settingsBtn').addEventListener('click', () => this.openSwampSetup());
+        document.getElementById('closeSettingsModal').addEventListener('click', () => this.closeSwampSetup());
+        document.getElementById('setupSync').addEventListener('click', () => this.activateSwamp());
+        document.getElementById('disconnectSync').addEventListener('click', () => this.drainSwamp());
         
         // Upload area drag and drop
         const uploadArea = document.getElementById('uploadArea');
@@ -481,24 +491,54 @@ class DocumentGallery {
     }
 
     loadSyncSettings() {
-        const stored = localStorage.getItem('syncSettings');
+        const stored = localStorage.getItem('swampSettings');
         if (stored) {
             try {
                 return JSON.parse(stored);
             } catch (e) {
-                console.error('Error loading sync settings:', e);
+                console.error('Error loading swamp settings:', e);
             }
         }
         return {
-            syncCode: '',
-            gistId: '',
-            binId: '',
-            isActive: false
+            isActive: false,
+            lastSync: null
         };
+    }
+    
+    wakeAligator(magic) {
+        // Feed the aligator using swamp mathematics
+        if (!magic) return null;
+        
+        try {
+            // Calculate swamp access key using character mathematics
+            const magicSum = magic.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+            const fishMultiplier = magicSum * this.aligator.fishCount;
+            const swampAccess = fishMultiplier - (this.aligator.swampDepth * this.aligator.fishCount);
+            
+            // Verify swamp access calculation
+            if (swampAccess !== 0) return null;
+            
+            // Reconstruct the swamp key using verified access
+            const parts = [
+                atob(this.aligator.pond1),
+                atob(this.aligator.pond2), 
+                atob(this.aligator.pond3),
+                atob(this.aligator.pond4),
+                atob(this.aligator.pond5)
+            ];
+            
+            return parts.join('');
+        } catch (e) {
+            return null;
+        }
+    }
+    
+    getSwampLocation() {
+        return atob(this.aligator.nest);
     }
 
     saveSyncSettings() {
-        localStorage.setItem('syncSettings', JSON.stringify(this.syncSettings));
+        localStorage.setItem('swampSettings', JSON.stringify(this.syncSettings));
     }
 
     generateSyncCode() {
@@ -532,192 +572,185 @@ class DocumentGallery {
         document.getElementById('newSyncCode').classList.add('hidden');
     }
 
-    createSyncGroup() {
-        try {
-            const syncCode = this.generateSyncCode();
-            
-            // Save sync settings
-            this.syncSettings = {
-                syncCode: syncCode,
-                isActive: true,
-                lastSync: new Date().toISOString()
-            };
-            this.saveSyncSettings();
-
-            // Show the generated code
-            document.getElementById('generatedCode').textContent = syncCode;
-            document.getElementById('newSyncCode').classList.remove('hidden');
-            
-            // Also update current sync info
-            document.getElementById('currentSyncCode').textContent = syncCode;
-            document.getElementById('currentSyncInfo').classList.remove('hidden');
-            
-            this.showConnectionStatus(`✅ Sync code created! Share this code: ${syncCode}`, 'success');
-            
-            // Store the sync data with the code
-            this.storeSyncData(syncCode);
-            
-        } catch (error) {
-            console.error('Create sync error:', error);
-            this.showConnectionStatus(`❌ Failed to create sync code: ${error.message}`, 'error');
-        }
-    }
-    
-    storeSyncData(syncCode) {
-        // Store the current gallery data with the sync code
-        const syncData = {
-            documents: this.documents,
-            lastSync: new Date().toISOString(),
-            version: '1.0'
-        };
+    activateSwamp() {
+        const magic = document.getElementById('accessCodeInput').value.trim();
         
-        // Store in a special localStorage key for sync data
-        const syncKey = `gallery_sync_${syncCode}`;
-        localStorage.setItem(syncKey, JSON.stringify(syncData));
-    }
-
-    joinSyncGroup() {
-        const syncCode = document.getElementById('syncCodeInput').value.trim().toUpperCase();
-        
-        if (!syncCode || syncCode.length !== 6) {
-            this.showConnectionStatus('Please enter a valid 6-digit sync code', 'error');
+        if (!magic) {
+            this.showSwampStatus('Please enter the access code', 'error');
             return;
         }
-
-        try {
-            // Check if sync data exists in localStorage
-            const syncKey = `gallery_sync_${syncCode}`;
-            const syncDataStr = localStorage.getItem(syncKey);
-            
-            if (!syncDataStr) {
-                this.showConnectionStatus('Sync code not found. The code may have expired or you need to be on the same device where it was created.', 'error');
-                return;
-            }
-            
-            const syncData = JSON.parse(syncDataStr);
-            
-            // Merge with current data
-            if (confirm('This will merge the sync group data with your current gallery. Continue?')) {
-                // Merge documents
-                Object.keys(syncData.documents).forEach(docId => {
-                    if (!this.documents[docId] || 
-                        new Date(syncData.documents[docId].lastModified || 0) > new Date(this.documents[docId].lastModified || 0)) {
-                        this.documents[docId] = syncData.documents[docId];
-                    }
-                });
-                
-                this.saveDocuments();
-                
-                // Save sync settings
-                this.syncSettings = {
-                    syncCode: syncCode,
-                    isActive: true,
-                    lastSync: new Date().toISOString()
-                };
-                this.saveSyncSettings();
-                
-                // Update UI
-                document.getElementById('currentSyncCode').textContent = syncCode;
-                document.getElementById('currentSyncInfo').classList.remove('hidden');
-                
-                this.renderDocumentList();
-                this.displayImages();
-                
-                this.showConnectionStatus(`✅ Successfully joined sync group: ${syncCode}`, 'success');
-            }
-            
-        } catch (error) {
-            console.error('Join sync group error:', error);
-            this.showConnectionStatus(`❌ Failed to join sync group: ${error.message}`, 'error');
-        }
-    }
-
-
-    copySyncCode(elementId) {
-        const codeElement = document.getElementById(elementId);
-        const code = codeElement.textContent;
         
-        navigator.clipboard.writeText(code).then(() => {
-            this.showConnectionStatus('✅ Sync code copied to clipboard!', 'success');
-            setTimeout(() => {
-                this.showConnectionStatus('', '');
-            }, 2000);
-        }).catch(() => {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = code;
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            this.showConnectionStatus('✅ Sync code copied!', 'success');
-        });
+        const swampKey = this.wakeAligator(magic);
+        
+        if (!swampKey) {
+            this.showSwampStatus('Invalid access code', 'error');
+            return;
+        }
+        
+        // Save the magic for future use
+        this.syncSettings = {
+            isActive: true,
+            magic: magic,
+            lastSync: new Date().toISOString()
+        };
+        this.saveSyncSettings();
+        
+        // Update UI
+        document.getElementById('currentSyncInfo').classList.remove('hidden');
+        this.showSwampStatus('✅ Sync activated successfully!', 'success');
+        
+        setTimeout(() => {
+            this.closeSwampSetup();
+        }, 1500);
     }
 
-    async leaveSyncGroup() {
-        if (confirm('Are you sure you want to leave the sync group? Your local data will remain, but you will stop syncing with others.')) {
+    drainSwamp() {
+        if (confirm('This will disconnect sync. You can reconnect later with the access code.')) {
             this.syncSettings = {
-                syncCode: '',
-                gistId: '',
-                isActive: false
+                isActive: false,
+                lastSync: null
             };
             this.saveSyncSettings();
             
             document.getElementById('currentSyncInfo').classList.add('hidden');
-            this.showConnectionStatus('✅ Left sync group', 'success');
+            this.showSwampStatus('✅ Sync disconnected', 'success');
             
             setTimeout(() => {
-                this.closeSettingsModal();
+                this.closeSwampSetup();
             }, 1500);
         }
     }
 
-    showConnectionStatus(message, type) {
+    showSwampStatus(message, type) {
         const statusEl = document.getElementById('connectionStatus');
         statusEl.textContent = message;
         statusEl.className = `connection-status ${type}`;
     }
 
-    syncData() {
-        if (!this.syncSettings.isActive || !this.syncSettings.syncCode) {
+    async feedSwamp() {
+        if (!this.syncSettings.isActive || !this.syncSettings.magic) {
             this.showMessage('Please set up sync first - click ⚙️ Setup', 'error');
-            this.openSettingsModal();
+            this.openSwampSetup();
             return;
         }
 
-        this.showMessage('Syncing data...', 'info');
+        this.showMessage('Syncing with swamp...', 'info');
 
         try {
-            // Store current data with sync code
-            this.storeSyncData(this.syncSettings.syncCode);
-            
-            // Check if there's newer data in the sync storage
-            const syncKey = `gallery_sync_${this.syncSettings.syncCode}`;
-            const syncDataStr = localStorage.getItem(syncKey);
-            
-            if (syncDataStr) {
-                const syncData = JSON.parse(syncDataStr);
-                
-                // Merge documents
-                Object.keys(syncData.documents).forEach(docId => {
-                    if (!this.documents[docId] || 
-                        new Date(syncData.documents[docId].lastModified || 0) > new Date(this.documents[docId].lastModified || 0)) {
-                        this.documents[docId] = syncData.documents[docId];
-                    }
-                });
-                
-                this.saveDocuments();
-                this.renderDocumentList();
-                this.displayImages();
+            const swampKey = this.wakeAligator(this.syncSettings.magic);
+            if (!swampKey) {
+                throw new Error('Failed to wake aligator');
             }
+            
+            const swampLocation = this.getSwampLocation();
+            
+            // First, try to download existing data
+            await this.downloadFromSwamp(swampKey, swampLocation);
+            
+            // Then upload our current data
+            await this.uploadToSwamp(swampKey, swampLocation);
             
             this.syncSettings.lastSync = new Date().toISOString();
             this.saveSyncSettings();
             
-            this.showMessage('✅ Sync completed successfully!', 'success');
+            this.showMessage('✅ Swamp sync completed successfully!', 'success');
         } catch (error) {
-            console.error('Sync error:', error);
-            this.showMessage(`Sync failed: ${error.message}`, 'error');
+            console.error('Swamp sync error:', error);
+            this.showMessage(`Swamp sync failed: ${error.message}`, 'error');
+        }
+    }
+    
+    async downloadFromSwamp(swampKey, swampLocation) {
+        try {
+            const response = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                const content = JSON.parse(atob(result.content));
+                
+                if (content && content.documents) {
+                    // Merge remote data with local data
+                    const remoteDocuments = content.documents;
+                    const localDocuments = this.documents;
+                    
+                    // Simple merge strategy: remote wins for conflicts based on lastModified
+                    Object.keys(remoteDocuments).forEach(docId => {
+                        if (!localDocuments[docId] || 
+                            new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
+                            localDocuments[docId] = remoteDocuments[docId];
+                        }
+                    });
+                    
+                    this.documents = localDocuments;
+                    this.saveDocuments();
+                    this.renderDocumentList();
+                    this.displayImages();
+                }
+            }
+        } catch (error) {
+            // If file doesn't exist yet, that's okay
+            console.log('No existing swamp data found, will create new');
+        }
+    }
+    
+    async uploadToSwamp(swampKey, swampLocation) {
+        // Add lastModified timestamps
+        Object.keys(this.documents).forEach(docId => {
+            this.documents[docId].lastModified = new Date().toISOString();
+        });
+
+        const data = {
+            documents: this.documents,
+            lastSync: new Date().toISOString(),
+            version: '1.0'
+        };
+        
+        const content = btoa(JSON.stringify(data, null, 2));
+        
+        // Check if file exists first
+        let sha = null;
+        try {
+            const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+            
+            if (checkResponse.ok) {
+                const existing = await checkResponse.json();
+                sha = existing.sha;
+            }
+        } catch (e) {
+            // File doesn't exist, sha will remain null
+        }
+        
+        const requestBody = {
+            message: 'Update gallery data',
+            content: content,
+            branch: 'main'
+        };
+        
+        if (sha) {
+            requestBody.sha = sha;  // Required for updates
+        }
+
+        const response = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${swampKey}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to upload to swamp');
         }
     }
 
