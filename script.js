@@ -41,8 +41,8 @@ class DocumentGallery {
         
         // Sync
         document.getElementById('syncBtn').addEventListener('click', () => this.feedSwamp());
-        document.getElementById('settingsBtn').addEventListener('click', () => this.openSwampSetup());
-        document.getElementById('closeSettingsModal').addEventListener('click', () => this.closeSwampSetup());
+        document.getElementById('settingsBtn').addEventListener('click', () => this.openSettingsModal());
+        document.getElementById('closeSettingsModal').addEventListener('click', () => this.closeSettingsModal());
         
         // Setup sync with error handling
         const setupBtn = document.getElementById('setupSync');
@@ -567,14 +567,13 @@ class DocumentGallery {
     openSettingsModal() {
         // Show current sync status if active
         if (this.syncSettings.isActive) {
-            document.getElementById('currentSyncCode').textContent = this.syncSettings.syncCode;
             document.getElementById('currentSyncInfo').classList.remove('hidden');
         } else {
             document.getElementById('currentSyncInfo').classList.add('hidden');
         }
         
         // Reset input field
-        document.getElementById('syncCodeInput').value = '';
+        document.getElementById('accessCodeInput').value = '';
         
         document.getElementById('settingsModal').classList.remove('hidden');
     }
@@ -583,7 +582,6 @@ class DocumentGallery {
         document.getElementById('settingsModal').classList.add('hidden');
         document.getElementById('connectionStatus').textContent = '';
         document.getElementById('connectionStatus').className = 'connection-status';
-        document.getElementById('newSyncCode').classList.add('hidden');
     }
 
     activateSwamp() {
@@ -614,7 +612,7 @@ class DocumentGallery {
         this.showSwampStatus('✅ Sync activated successfully!', 'success');
         
         setTimeout(() => {
-            this.closeSwampSetup();
+            this.closeSettingsModal();
         }, 1500);
     }
 
@@ -630,7 +628,7 @@ class DocumentGallery {
             this.showSwampStatus('✅ Sync disconnected', 'success');
             
             setTimeout(() => {
-                this.closeSwampSetup();
+                this.closeSettingsModal();
             }, 1500);
         }
     }
@@ -644,7 +642,7 @@ class DocumentGallery {
     async feedSwamp() {
         if (!this.syncSettings.isActive || !this.syncSettings.magic) {
             this.showMessage('Please set up sync first - click ⚙️ Setup', 'error');
-            this.openSwampSetup();
+            this.openSettingsModal();
             return;
         }
 
