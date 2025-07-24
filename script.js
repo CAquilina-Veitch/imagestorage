@@ -60,6 +60,14 @@ class DocumentGallery {
             disconnectBtn.addEventListener('click', () => this.drainSwamp());
         }
         
+        // Image modal
+        document.getElementById('closeImageModal').addEventListener('click', () => this.closeImageModal());
+        document.getElementById('imageModal').addEventListener('click', (e) => {
+            if (e.target.id === 'imageModal') {
+                this.closeImageModal();
+            }
+        });
+        
         // Upload area drag and drop
         const uploadArea = document.getElementById('uploadArea');
         uploadArea.addEventListener('dragover', (e) => this.handleDragOver(e));
@@ -287,13 +295,19 @@ class DocumentGallery {
             imageItem.className = 'image-item';
             
             const img = document.createElement('img');
-            img.src = imageInfo.url;
+            // Use thumbnail if available, fallback to full image
+            img.src = imageInfo.thumbnail || imageInfo.url;
             img.alt = imageInfo.name;
             img.loading = 'lazy';
+            
+            // Add click handler to show full-size image
+            img.addEventListener('click', () => this.showFullSizeImage(imageInfo, index));
+            img.style.cursor = 'pointer';
             
             const imageActions = document.createElement('div');
             imageActions.className = 'image-actions';
             imageActions.innerHTML = `
+                <button onclick="documentGallery.showFullSizeImage(documentGallery.documents['${this.currentDocumentId}'].images[${index}], ${index})" title="View Full Size">🔍</button>
                 <button onclick="documentGallery.downloadSingleImage(${index})" title="Download">📥</button>
                 <button onclick="documentGallery.deleteImage(${index})" title="Delete">🗑️</button>
             `;
@@ -447,7 +461,7 @@ class DocumentGallery {
                         const convertedBlob = await heic2any({
                             blob: file,
                             toType: 'image/jpeg',
-                            quality: 0.9
+                            quality: 0.85
                         });
                         
                         // Create a new file from the converted blob
@@ -468,9 +482,14 @@ class DocumentGallery {
                 // Read the file (either original or converted)
                 const dataUrl = await this.readFileAsDataURL(processedFile);
                 
+                // Generate thumbnail
+                document.getElementById('progressText').textContent = `Generating thumbnail... ${i + 1}/${totalFiles}`;
+                const thumbnailUrl = await this.generateThumbnail(dataUrl, 300);
+                
                 const imageInfo = {
                     name: fileName,
-                    url: dataUrl,
+                    url: dataUrl,           // Full-size image
+                    thumbnail: thumbnailUrl, // Thumbnail for gallery display
                     uploadDate: new Date().toISOString(),
                     size: processedFile.size,
                     type: processedFile.type,
@@ -523,6 +542,52 @@ class DocumentGallery {
             reader.readAsDataURL(file);
         });
     }
+    
+    generateThumbnail(file, maxSize = 300) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                // Calculate new dimensions maintaining aspect ratio
+                let { width, height } = img;
+                
+                if (width > height) {
+                    if (width > maxSize) {
+                        height = (height * maxSize) / width;
+                        width = maxSize;
+                    }
+                } else {
+                    if (height > maxSize) {
+                        width = (width * maxSize) / height;
+                        height = maxSize;
+                    }
+                }
+                
+                // Create canvas for thumbnail
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw resized image
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convert to data URL with compression
+                const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                resolve(thumbnailDataUrl);
+            };
+            
+            img.onerror = reject;
+            
+            // Handle both File objects and data URLs
+            if (typeof file === 'string') {
+                img.src = file; // It's already a data URL
+            } else {
+                const reader = new FileReader();
+                reader.onload = (e) => img.src = e.target.result;
+                reader.readAsDataURL(file);
+            }
+        });
+    }
 
     downloadAllImages() {
         if (!this.currentDocumentId) return;
@@ -567,6 +632,46 @@ class DocumentGallery {
         document.body.removeChild(link);
 
         this.showMessage(`Downloaded: ${imageInfo.name}`, 'success');
+    }
+    
+    showFullSizeImage(imageInfo, index) {
+        if (!imageInfo) return;
+        
+        this.currentImageIndex = index;
+        
+        // Set modal content
+        document.getElementById('imageModalTitle').textContent = imageInfo.name;
+        const fullSizeImg = document.getElementById('fullSizeImage');
+        fullSizeImg.src = imageInfo.url; // Always use full-size image in modal
+        fullSizeImg.alt = imageInfo.name;
+        
+        // Set up modal action buttons
+        const downloadBtn = document.getElementById('downloadFromModal');
+        const deleteBtn = document.getElementById('deleteFromModal');
+        
+        // Remove existing event listeners
+        downloadBtn.replaceWith(downloadBtn.cloneNode(true));
+        deleteBtn.replaceWith(deleteBtn.cloneNode(true));
+        
+        // Add new event listeners
+        document.getElementById('downloadFromModal').addEventListener('click', () => {
+            this.downloadSingleImage(index);
+        });
+        
+        document.getElementById('deleteFromModal').addEventListener('click', () => {
+            if (confirm('Are you sure you want to delete this image?')) {
+                this.deleteImage(index);
+                this.closeImageModal();
+            }
+        });
+        
+        // Show modal
+        document.getElementById('imageModal').classList.remove('hidden');
+    }
+    
+    closeImageModal() {
+        document.getElementById('imageModal').classList.add('hidden');
+        this.currentImageIndex = null;
     }
 
     formatFileSize(bytes) {

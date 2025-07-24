@@ -768,6 +768,76 @@ body {
     text-align: center;
 }
 
+/* Image Modal */
+.image-modal-content {
+    background: #404040;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    border: 1px solid #555555;
+}
+
+.image-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #555555;
+    background: #2a2a2a;
+}
+
+.image-modal-header h3 {
+    color: #ffffff;
+    margin: 0;
+    font-weight: 600;
+}
+
+.image-modal-body {
+    padding: 24px;
+    text-align: center;
+    background: #404040;
+}
+
+.image-modal-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.image-modal-actions .download-btn,
+.image-modal-actions .delete-btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    min-height: 40px;
+}
+
+.image-modal-actions .download-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.image-modal-actions .download-btn:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.image-modal-actions .delete-btn {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+}
+
+.image-modal-actions .delete-btn:hover {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
 /* Utility Classes */
 .hidden {
     display: none !important;

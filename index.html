@@ -99,6 +99,23 @@
         </div>
     </div>
 
+    <!-- Full Size Image Modal -->
+    <div id="imageModal" class="modal hidden">
+        <div class="image-modal-content">
+            <div class="image-modal-header">
+                <h3 id="imageModalTitle">Image Viewer</h3>
+                <button id="closeImageModal" class="close-btn">&times;</button>
+            </div>
+            <div class="image-modal-body">
+                <img id="fullSizeImage" src="" alt="" style="max-width: 100%; max-height: 70vh; object-fit: contain;">
+                <div class="image-modal-actions">
+                    <button id="downloadFromModal" class="download-btn">📥 Download</button>
+                    <button id="deleteFromModal" class="delete-btn">🗑️ Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <script src="script.js"></script>
 </body>
