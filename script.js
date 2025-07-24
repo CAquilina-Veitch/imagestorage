@@ -382,11 +382,15 @@ class DocumentGallery {
     handleDrop(e) {
         e.preventDefault();
         e.currentTarget.classList.remove('dragover');
-        const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+        const files = Array.from(e.dataTransfer.files).filter(file => 
+            file.type.startsWith('image/') || 
+            file.name.toLowerCase().endsWith('.heic') ||
+            file.name.toLowerCase().endsWith('.HEIC')
+        );
         this.processFiles(files);
     }
 
-    processFiles(files) {
+    async processFiles(files) {
         if (!this.currentDocumentId || files.length === 0) return;
 
         if (this.isUploading) {
@@ -394,8 +398,14 @@ class DocumentGallery {
             return;
         }
 
-        const imageFiles = files.filter(file => file.type.startsWith('image/'));
-        if (imageFiles.length === 0) {
+        // Filter for image files and HEIC files
+        const validFiles = files.filter(file => 
+            file.type.startsWith('image/') || 
+            file.name.toLowerCase().endsWith('.heic') ||
+            file.name.toLowerCase().endsWith('.HEIC')
+        );
+        
+        if (validFiles.length === 0) {
             this.showMessage('No valid image files selected', 'error');
             return;
         }
@@ -413,17 +423,58 @@ class DocumentGallery {
         
         const doc = this.documents[this.currentDocumentId];
         let processedCount = 0;
-        const totalFiles = imageFiles.length;
+        const totalFiles = validFiles.length;
 
-        imageFiles.forEach((file, index) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
+        for (let i = 0; i < validFiles.length; i++) {
+            const file = validFiles[i];
+            
+            try {
+                // Check if it's a HEIC file
+                const isHeic = file.name.toLowerCase().endsWith('.heic') || 
+                              file.name.toLowerCase().endsWith('.HEIC') ||
+                              file.type === 'image/heic' ||
+                              file.type === 'image/heif';
+                
+                let processedFile = file;
+                let fileName = file.name;
+                
+                if (isHeic) {
+                    // Update progress text to show conversion
+                    document.getElementById('progressText').textContent = `Converting HEIC... ${i + 1}/${totalFiles}`;
+                    
+                    // Convert HEIC to JPEG
+                    try {
+                        const convertedBlob = await heic2any({
+                            blob: file,
+                            toType: 'image/jpeg',
+                            quality: 0.9
+                        });
+                        
+                        // Create a new file from the converted blob
+                        processedFile = new File([convertedBlob], 
+                            fileName.replace(/\.heic$/i, '.jpg'), 
+                            { type: 'image/jpeg' }
+                        );
+                        
+                        fileName = processedFile.name;
+                        
+                    } catch (conversionError) {
+                        console.error('HEIC conversion failed:', conversionError);
+                        this.showMessage(`Failed to convert HEIC file: ${file.name}`, 'error');
+                        continue; // Skip this file
+                    }
+                }
+                
+                // Read the file (either original or converted)
+                const dataUrl = await this.readFileAsDataURL(processedFile);
+                
                 const imageInfo = {
-                    name: file.name,
-                    url: e.target.result,
+                    name: fileName,
+                    url: dataUrl,
                     uploadDate: new Date().toISOString(),
-                    size: file.size,
-                    type: file.type
+                    size: processedFile.size,
+                    type: processedFile.type,
+                    originalName: file.name // Keep track of original name
                 };
                 
                 doc.images.push(imageInfo);
@@ -432,21 +483,43 @@ class DocumentGallery {
                 // Update progress
                 const progress = (processedCount / totalFiles) * 100;
                 document.getElementById('progressFill').style.width = progress + '%';
-                document.getElementById('progressText').textContent = `Uploading... ${processedCount}/${totalFiles}`;
+                document.getElementById('progressText').textContent = `Processed... ${processedCount}/${totalFiles}`;
                 
-                if (processedCount === totalFiles) {
-                    this.saveDocuments();
-                    this.displayImages();
-                    this.renderDocumentList();
-                    this.clearFileInput();  // Clear file input after successful processing
-                    this.isUploading = false;  // Reset upload state
-                    this.showMessage(`Successfully uploaded ${totalFiles} image(s)`, 'success');
-                    
-                    setTimeout(() => {
-                        this.closeUploadModal();
-                    }, 1000);
-                }
-            };
+            } catch (error) {
+                console.error('Error processing file:', file.name, error);
+                this.showMessage(`Error processing file: ${file.name}`, 'error');
+                processedCount++; // Still increment to avoid hanging
+            }
+        }
+        
+        // Finalize upload
+        this.saveDocuments();
+        this.displayImages();
+        this.renderDocumentList();
+        this.clearFileInput();
+        this.isUploading = false;
+        
+        const heicCount = validFiles.filter(f => 
+            f.name.toLowerCase().endsWith('.heic') || f.name.toLowerCase().endsWith('.HEIC')
+        ).length;
+        
+        let message = `Successfully uploaded ${processedCount} image(s)`;
+        if (heicCount > 0) {
+            message += ` (${heicCount} HEIC files converted to JPEG)`;
+        }
+        
+        this.showMessage(message, 'success');
+        
+        setTimeout(() => {
+            this.closeUploadModal();
+        }, 1000);
+    }
+    
+    readFileAsDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
             reader.readAsDataURL(file);
         });
     }
@@ -670,64 +743,66 @@ class DocumentGallery {
     }
     
     async syncWithSwamp(swampKey, swampLocation) {
-        // Try to delete and recreate the file if it exists
-        // This avoids SHA conflicts entirely
         try {
-            // First, try to get the file to see if it exists
-            const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-                headers: {
-                    'Authorization': `Bearer ${swampKey}`,
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            });
+            console.log('Starting sync process...');
             
+            // First, try to get existing data
             let remoteData = null;
             let sha = null;
             
-            if (checkResponse.ok) {
-                const result = await checkResponse.json();
-                sha = result.sha;
-                remoteData = JSON.parse(atob(result.content));
-                
-                // Merge remote data with local data first
-                if (remoteData && remoteData.documents) {
-                    const remoteDocuments = remoteData.documents;
-                    const localDocuments = this.documents;
-                    
-                    // Merge: newer wins by lastModified timestamp
-                    Object.keys(remoteDocuments).forEach(docId => {
-                        if (!localDocuments[docId] || 
-                            new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
-                            localDocuments[docId] = remoteDocuments[docId];
-                        }
-                    });
-                    
-                    this.documents = localDocuments;
-                    this.saveDocuments();
-                    this.renderDocumentList();
-                    this.displayImages();
-                }
-                
-                // Delete the existing file to avoid SHA conflicts
-                await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-                    method: 'DELETE',
+            try {
+                const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
                     headers: {
                         'Authorization': `Bearer ${swampKey}`,
-                        'Accept': 'application/vnd.github.v3+json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: 'Delete gallery data for update',
-                        sha: sha,
-                        branch: 'main'
-                    })
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
                 });
                 
-                // Small delay to ensure deletion is processed
-                await new Promise(resolve => setTimeout(resolve, 500));
+                if (checkResponse.ok) {
+                    const responseText = await checkResponse.text();
+                    console.log('API Response length:', responseText.length);
+                    
+                    if (responseText && responseText.trim()) {
+                        const result = JSON.parse(responseText);
+                        sha = result.sha;
+                        
+                        if (result.content) {
+                            const decodedContent = atob(result.content);
+                            console.log('Decoded content length:', decodedContent.length);
+                            
+                            if (decodedContent && decodedContent.trim()) {
+                                remoteData = JSON.parse(decodedContent);
+                            }
+                        }
+                    }
+                } else {
+                    console.log('File does not exist yet, will create new');
+                }
+            } catch (fetchError) {
+                console.log('Error fetching existing data:', fetchError.message);
+                // Continue with upload even if fetch fails
             }
             
-            // Prepare fresh upload data
+            // Merge remote data with local data if we got any
+            if (remoteData && remoteData.documents) {
+                console.log('Merging remote data...');
+                const remoteDocuments = remoteData.documents;
+                const localDocuments = this.documents;
+                
+                Object.keys(remoteDocuments).forEach(docId => {
+                    if (!localDocuments[docId] || 
+                        new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
+                        localDocuments[docId] = remoteDocuments[docId];
+                    }
+                });
+                
+                this.documents = localDocuments;
+                this.saveDocuments();
+                this.renderDocumentList();
+                this.displayImages();
+            }
+            
+            // Prepare upload data
             Object.keys(this.documents).forEach(docId => {
                 this.documents[docId].lastModified = new Date().toISOString();
             });
@@ -740,7 +815,18 @@ class DocumentGallery {
             
             const content = btoa(JSON.stringify(uploadData, null, 2));
             
-            // Create the file fresh (no SHA needed)
+            const requestBody = {
+                message: `Update gallery data - ${new Date().toISOString()}`,
+                content: content,
+                branch: 'main'
+            };
+            
+            // Include SHA only if we have one (for updates)
+            if (sha) {
+                requestBody.sha = sha;
+            }
+            
+            console.log('Uploading data...');
             const uploadResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
                 method: 'PUT',
                 headers: {
@@ -748,20 +834,28 @@ class DocumentGallery {
                     'Accept': 'application/vnd.github.v3+json',
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    message: 'Update gallery data',
-                    content: content,
-                    branch: 'main'
-                })
+                body: JSON.stringify(requestBody)
             });
 
             if (!uploadResponse.ok) {
-                const error = await uploadResponse.json();
-                throw new Error(error.message || 'Failed to sync data');
+                const errorText = await uploadResponse.text();
+                console.log('Upload error response:', errorText);
+                
+                let errorMessage = 'Failed to sync data';
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.message || errorMessage;
+                } catch (e) {
+                    errorMessage = `HTTP ${uploadResponse.status}: ${uploadResponse.statusText}`;
+                }
+                throw new Error(errorMessage);
             }
             
+            console.log('Sync completed successfully');
+            
         } catch (error) {
-            throw new Error(`Sync failed: ${error.message}`);
+            console.error('Sync error details:', error);
+            throw new Error(error.message || 'Unknown sync error');
         }
     }
     
