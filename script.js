@@ -646,7 +646,7 @@ class DocumentGallery {
             return;
         }
 
-        this.showMessage('Syncing with swamp...', 'info');
+        this.showMessage('Syncing data...', 'info');
 
         try {
             const swampKey = this.wakeAligator(this.syncSettings.magic);
@@ -656,40 +656,46 @@ class DocumentGallery {
             
             const swampLocation = this.getSwampLocation();
             
-            // First, try to download existing data
-            await this.downloadFromSwamp(swampKey, swampLocation);
-            
-            // Then upload our current data
-            await this.uploadToSwamp(swampKey, swampLocation);
+            // Download and merge with latest data, then upload
+            await this.syncWithSwamp(swampKey, swampLocation);
             
             this.syncSettings.lastSync = new Date().toISOString();
             this.saveSyncSettings();
             
-            this.showMessage('✅ Swamp sync completed successfully!', 'success');
+            this.showMessage('✅ Sync completed successfully!', 'success');
         } catch (error) {
             console.error('Swamp sync error:', error);
-            this.showMessage(`Swamp sync failed: ${error.message}`, 'error');
+            this.showMessage(`Sync failed: ${error.message}`, 'error');
         }
     }
     
-    async downloadFromSwamp(swampKey, swampLocation) {
-        try {
-            const response = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            });
-            
-            if (response.ok) {
-                const result = await response.json();
-                const content = JSON.parse(atob(result.content));
+    async syncWithSwamp(swampKey, swampLocation) {
+        // Retry logic for the entire sync process
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                // Get current file state
+                let sha = null;
+                let remoteData = null;
                 
-                if (content && content.documents) {
-                    // Merge remote data with local data
-                    const remoteDocuments = content.documents;
+                const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                    headers: {
+                        'Authorization': `Bearer ${swampKey}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (checkResponse.ok) {
+                    const result = await checkResponse.json();
+                    sha = result.sha;
+                    remoteData = JSON.parse(atob(result.content));
+                }
+                
+                // Merge remote data with local data
+                if (remoteData && remoteData.documents) {
+                    const remoteDocuments = remoteData.documents;
                     const localDocuments = this.documents;
                     
-                    // Simple merge strategy: remote wins for conflicts based on lastModified
+                    // Merge: newer wins by lastModified timestamp
                     Object.keys(remoteDocuments).forEach(docId => {
                         if (!localDocuments[docId] || 
                             new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
@@ -702,43 +708,19 @@ class DocumentGallery {
                     this.renderDocumentList();
                     this.displayImages();
                 }
-            }
-        } catch (error) {
-            // If file doesn't exist yet, that's okay
-            console.log('No existing swamp data found, will create new');
-        }
-    }
-    
-    async uploadToSwamp(swampKey, swampLocation) {
-        // Add lastModified timestamps
-        Object.keys(this.documents).forEach(docId => {
-            this.documents[docId].lastModified = new Date().toISOString();
-        });
-
-        const data = {
-            documents: this.documents,
-            lastSync: new Date().toISOString(),
-            version: '1.0'
-        };
-        
-        const content = btoa(JSON.stringify(data, null, 2));
-        
-        // Retry logic for handling conflicts
-        for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-                // Get current SHA right before upload
-                let sha = null;
-                const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-                    headers: {
-                        'Authorization': `Bearer ${swampKey}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                });
                 
-                if (checkResponse.ok) {
-                    const existing = await checkResponse.json();
-                    sha = existing.sha;
-                }
+                // Prepare upload data with fresh timestamps
+                Object.keys(this.documents).forEach(docId => {
+                    this.documents[docId].lastModified = new Date().toISOString();
+                });
+
+                const uploadData = {
+                    documents: this.documents,
+                    lastSync: new Date().toISOString(),
+                    version: '1.0'
+                };
+                
+                const content = btoa(JSON.stringify(uploadData, null, 2));
                 
                 const requestBody = {
                     message: 'Update gallery data',
@@ -747,10 +729,11 @@ class DocumentGallery {
                 };
                 
                 if (sha) {
-                    requestBody.sha = sha;  // Required for updates
+                    requestBody.sha = sha;
                 }
 
-                const response = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                // Upload with the SHA we just got
+                const uploadResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${swampKey}`,
@@ -760,29 +743,29 @@ class DocumentGallery {
                     body: JSON.stringify(requestBody)
                 });
 
-                if (response.ok) {
+                if (uploadResponse.ok) {
                     return; // Success!
                 }
                 
-                if (response.status === 409 && attempt < 2) {
-                    // Conflict - file was updated, retry
-                    console.log(`Upload conflict, retrying... (attempt ${attempt + 1})`);
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                if (uploadResponse.status === 409 && attempt < 2) {
+                    console.log(`Sync conflict, retrying... (attempt ${attempt + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     continue;
                 }
                 
-                const error = await response.json();
-                throw new Error(error.message || 'Failed to upload to swamp');
+                const error = await uploadResponse.json();
+                throw new Error(error.message || 'Failed to sync data');
                 
             } catch (e) {
                 if (attempt === 2) {
-                    throw e; // Final attempt failed
+                    throw e;
                 }
-                console.log(`Upload error, retrying... (attempt ${attempt + 1}):`, e.message);
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                console.log(`Sync error, retrying... (attempt ${attempt + 1}):`, e.message);
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
     }
+    
 
 
     showMessage(message, type = 'info') {
