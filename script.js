@@ -723,46 +723,64 @@ class DocumentGallery {
         
         const content = btoa(JSON.stringify(data, null, 2));
         
-        // Check if file exists first
-        let sha = null;
-        try {
-            const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json'
+        // Retry logic for handling conflicts
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                // Get current SHA right before upload
+                let sha = null;
+                const checkResponse = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                    headers: {
+                        'Authorization': `Bearer ${swampKey}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (checkResponse.ok) {
+                    const existing = await checkResponse.json();
+                    sha = existing.sha;
                 }
-            });
-            
-            if (checkResponse.ok) {
-                const existing = await checkResponse.json();
-                sha = existing.sha;
+                
+                const requestBody = {
+                    message: 'Update gallery data',
+                    content: content,
+                    branch: 'main'
+                };
+                
+                if (sha) {
+                    requestBody.sha = sha;  // Required for updates
+                }
+
+                const response = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${swampKey}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (response.ok) {
+                    return; // Success!
+                }
+                
+                if (response.status === 409 && attempt < 2) {
+                    // Conflict - file was updated, retry
+                    console.log(`Upload conflict, retrying... (attempt ${attempt + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                    continue;
+                }
+                
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to upload to swamp');
+                
+            } catch (e) {
+                if (attempt === 2) {
+                    throw e; // Final attempt failed
+                }
+                console.log(`Upload error, retrying... (attempt ${attempt + 1}):`, e.message);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
             }
-        } catch (e) {
-            // File doesn't exist, sha will remain null
-        }
-        
-        const requestBody = {
-            message: 'Update gallery data',
-            content: content,
-            branch: 'main'
-        };
-        
-        if (sha) {
-            requestBody.sha = sha;  // Required for updates
-        }
-
-        const response = await fetch(`https://api.github.com/repos/${swampLocation}/contents/data/gallery-data.json`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${swampKey}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Failed to upload to swamp');
         }
     }
 
