@@ -492,6 +492,7 @@ class DocumentGallery {
         return {
             syncCode: '',
             gistId: '',
+            binId: '',
             isActive: false
         };
     }
@@ -531,67 +532,51 @@ class DocumentGallery {
         document.getElementById('newSyncCode').classList.add('hidden');
     }
 
-    async createSyncGroup() {
+    createSyncGroup() {
         try {
-            this.showConnectionStatus('Creating sync group...', 'info');
-            
             const syncCode = this.generateSyncCode();
-            const data = {
-                documents: this.documents,
-                lastSync: new Date().toISOString(),
-                version: '1.0',
-                syncCode: syncCode
-            };
-
-            // Create anonymous public gist
-            const response = await fetch('https://api.github.com/gists', {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    description: `Image Gallery Sync - ${syncCode}`,
-                    public: true,
-                    files: {
-                        'gallery-data.json': {
-                            content: JSON.stringify(data, null, 2)
-                        }
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Failed to create sync group');
-            }
-
-            const gist = await response.json();
             
             // Save sync settings
             this.syncSettings = {
                 syncCode: syncCode,
-                gistId: gist.id,
-                isActive: true
+                isActive: true,
+                lastSync: new Date().toISOString()
             };
             this.saveSyncSettings();
-
-            // Store the mapping for future use
-            this.storeSyncCodeMapping(syncCode, gist.id);
 
             // Show the generated code
             document.getElementById('generatedCode').textContent = syncCode;
             document.getElementById('newSyncCode').classList.remove('hidden');
             
-            this.showConnectionStatus(`✅ Sync group created! Code: ${syncCode}`, 'success');
+            // Also update current sync info
+            document.getElementById('currentSyncCode').textContent = syncCode;
+            document.getElementById('currentSyncInfo').classList.remove('hidden');
+            
+            this.showConnectionStatus(`✅ Sync code created! Share this code: ${syncCode}`, 'success');
+            
+            // Store the sync data with the code
+            this.storeSyncData(syncCode);
             
         } catch (error) {
-            console.error('Create sync group error:', error);
-            this.showConnectionStatus(`❌ Failed to create sync group: ${error.message}`, 'error');
+            console.error('Create sync error:', error);
+            this.showConnectionStatus(`❌ Failed to create sync code: ${error.message}`, 'error');
         }
     }
+    
+    storeSyncData(syncCode) {
+        // Store the current gallery data with the sync code
+        const syncData = {
+            documents: this.documents,
+            lastSync: new Date().toISOString(),
+            version: '1.0'
+        };
+        
+        // Store in a special localStorage key for sync data
+        const syncKey = `gallery_sync_${syncCode}`;
+        localStorage.setItem(syncKey, JSON.stringify(syncData));
+    }
 
-    async joinSyncGroup() {
+    joinSyncGroup() {
         const syncCode = document.getElementById('syncCodeInput').value.trim().toUpperCase();
         
         if (!syncCode || syncCode.length !== 6) {
@@ -600,26 +585,46 @@ class DocumentGallery {
         }
 
         try {
-            this.showConnectionStatus('Joining sync group...', 'info');
+            // Check if sync data exists in localStorage
+            const syncKey = `gallery_sync_${syncCode}`;
+            const syncDataStr = localStorage.getItem(syncKey);
             
-            // Since we can't easily search public gists by description,
-            // we'll need to store gist IDs locally or use a different approach
-            // For now, we'll show instructions for manual joining
-            this.showConnectionStatus('To join a sync group, you need the creator to share the full Gist URL or ID with you. GitHub doesn\'t allow searching public gists by sync code.', 'info');
-            
-            // Alternative: Check if there's a stored mapping of sync codes to gist IDs
-            const storedMappings = localStorage.getItem('syncCodeMappings');
-            if (storedMappings) {
-                const mappings = JSON.parse(storedMappings);
-                const gistId = mappings[syncCode];
-                
-                if (gistId) {
-                    await this.joinByGistId(gistId, syncCode);
-                    return;
-                }
+            if (!syncDataStr) {
+                this.showConnectionStatus('Sync code not found. The code may have expired or you need to be on the same device where it was created.', 'error');
+                return;
             }
             
-            this.showConnectionStatus('Sync code not found in local cache. Ask the group creator to share the Gist URL directly.', 'error');
+            const syncData = JSON.parse(syncDataStr);
+            
+            // Merge with current data
+            if (confirm('This will merge the sync group data with your current gallery. Continue?')) {
+                // Merge documents
+                Object.keys(syncData.documents).forEach(docId => {
+                    if (!this.documents[docId] || 
+                        new Date(syncData.documents[docId].lastModified || 0) > new Date(this.documents[docId].lastModified || 0)) {
+                        this.documents[docId] = syncData.documents[docId];
+                    }
+                });
+                
+                this.saveDocuments();
+                
+                // Save sync settings
+                this.syncSettings = {
+                    syncCode: syncCode,
+                    isActive: true,
+                    lastSync: new Date().toISOString()
+                };
+                this.saveSyncSettings();
+                
+                // Update UI
+                document.getElementById('currentSyncCode').textContent = syncCode;
+                document.getElementById('currentSyncInfo').classList.remove('hidden');
+                
+                this.renderDocumentList();
+                this.displayImages();
+                
+                this.showConnectionStatus(`✅ Successfully joined sync group: ${syncCode}`, 'success');
+            }
             
         } catch (error) {
             console.error('Join sync group error:', error);
@@ -627,75 +632,6 @@ class DocumentGallery {
         }
     }
 
-    async joinByGistId(gistId, syncCode) {
-        try {
-            // Verify the gist exists and has the correct sync code
-            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Gist not found or not accessible');
-            }
-
-            const gist = await response.json();
-            const fileContent = gist.files['gallery-data.json'];
-            
-            if (!fileContent) {
-                throw new Error('Invalid sync group - no gallery data found');
-            }
-
-            const content = JSON.parse(fileContent.content);
-            
-            if (content.syncCode !== syncCode) {
-                throw new Error('Sync code mismatch - invalid group');
-            }
-
-            // Join the group
-            this.syncSettings = {
-                syncCode: syncCode,
-                gistId: gistId,
-                isActive: true
-            };
-            this.saveSyncSettings();
-
-            // Store the mapping for future use
-            this.storeSyncCodeMapping(syncCode, gistId);
-
-            // Update current sync info display
-            document.getElementById('currentSyncCode').textContent = syncCode;
-            document.getElementById('currentSyncInfo').classList.remove('hidden');
-            
-            this.showConnectionStatus(`✅ Successfully joined sync group: ${syncCode}`, 'success');
-            
-            // Sync data immediately
-            setTimeout(() => {
-                this.syncData();
-            }, 1000);
-            
-        } catch (error) {
-            console.error('Join by gist ID error:', error);
-            this.showConnectionStatus(`❌ Failed to join sync group: ${error.message}`, 'error');
-        }
-    }
-
-    storeSyncCodeMapping(syncCode, gistId) {
-        const storedMappings = localStorage.getItem('syncCodeMappings');
-        let mappings = {};
-        
-        if (storedMappings) {
-            try {
-                mappings = JSON.parse(storedMappings);
-            } catch (e) {
-                console.warn('Failed to parse stored sync code mappings');
-            }
-        }
-        
-        mappings[syncCode] = gistId;
-        localStorage.setItem('syncCodeMappings', JSON.stringify(mappings));
-    }
 
     copySyncCode(elementId) {
         const codeElement = document.getElementById(elementId);
@@ -742,8 +678,8 @@ class DocumentGallery {
         statusEl.className = `connection-status ${type}`;
     }
 
-    async syncData() {
-        if (!this.syncSettings.isActive) {
+    syncData() {
+        if (!this.syncSettings.isActive || !this.syncSettings.syncCode) {
             this.showMessage('Please set up sync first - click ⚙️ Setup', 'error');
             this.openSettingsModal();
             return;
@@ -752,11 +688,31 @@ class DocumentGallery {
         this.showMessage('Syncing data...', 'info');
 
         try {
-            // First download remote data
-            await this.downloadFromGist();
+            // Store current data with sync code
+            this.storeSyncData(this.syncSettings.syncCode);
             
-            // Then upload local data
-            await this.uploadToGist();
+            // Check if there's newer data in the sync storage
+            const syncKey = `gallery_sync_${this.syncSettings.syncCode}`;
+            const syncDataStr = localStorage.getItem(syncKey);
+            
+            if (syncDataStr) {
+                const syncData = JSON.parse(syncDataStr);
+                
+                // Merge documents
+                Object.keys(syncData.documents).forEach(docId => {
+                    if (!this.documents[docId] || 
+                        new Date(syncData.documents[docId].lastModified || 0) > new Date(this.documents[docId].lastModified || 0)) {
+                        this.documents[docId] = syncData.documents[docId];
+                    }
+                });
+                
+                this.saveDocuments();
+                this.renderDocumentList();
+                this.displayImages();
+            }
+            
+            this.syncSettings.lastSync = new Date().toISOString();
+            this.saveSyncSettings();
             
             this.showMessage('✅ Sync completed successfully!', 'success');
         } catch (error) {
@@ -765,88 +721,6 @@ class DocumentGallery {
         }
     }
 
-    async downloadFromGist() {
-        if (!this.syncSettings.gistId) return;
-
-        try {
-            const response = await fetch(`https://api.github.com/gists/${this.syncSettings.gistId}`, {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            });
-
-            if (response.ok) {
-                const gist = await response.json();
-                const fileContent = gist.files['gallery-data.json'];
-                
-                if (fileContent) {
-                    const content = JSON.parse(fileContent.content);
-                    
-                    if (content.documents) {
-                        // Merge remote data with local data
-                        const remoteDocuments = content.documents;
-                        const localDocuments = this.documents;
-                        
-                        // Simple merge strategy: remote wins for conflicts based on lastModified
-                        Object.keys(remoteDocuments).forEach(docId => {
-                            if (!localDocuments[docId] || 
-                                new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
-                                localDocuments[docId] = remoteDocuments[docId];
-                            }
-                        });
-                        
-                        this.documents = localDocuments;
-                        this.saveDocuments();
-                        this.renderDocumentList();
-                        this.displayImages();
-                    }
-                }
-            }
-        } catch (error) {
-            console.warn('Download from gist failed:', error);
-            // Don't throw error - sync should continue with upload
-        }
-    }
-
-    async uploadToGist() {
-        if (!this.syncSettings.gistId) return;
-
-        // Add lastModified timestamps
-        Object.keys(this.documents).forEach(docId => {
-            this.documents[docId].lastModified = new Date().toISOString();
-        });
-
-        const data = {
-            documents: this.documents,
-            lastSync: new Date().toISOString(),
-            version: '1.0',
-            syncCode: this.syncSettings.syncCode
-        };
-
-        try {
-            const response = await fetch(`https://api.github.com/gists/${this.syncSettings.gistId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    files: {
-                        'gallery-data.json': {
-                            content: JSON.stringify(data, null, 2)
-                        }
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Failed to upload to sync group');
-            }
-        } catch (error) {
-            throw new Error(`Upload failed: ${error.message}`);
-        }
-    }
 
     showMessage(message, type = 'info') {
         const statusDiv = document.getElementById('statusMessage');

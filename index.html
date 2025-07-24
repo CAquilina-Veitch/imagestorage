@@ -81,7 +81,7 @@
             <div class="modal-body">
                 <div class="settings-section">
                     <h4>Join Existing Sync Group</h4>
-                    <p class="settings-help">Enter a sync code shared by someone else to join their gallery. Note: Sync codes work through a local cache system - you may need to create a new group if the code isn't found.</p>
+                    <p class="settings-help">Enter a sync code to merge data from another device. Note: Both devices need to have the same sync code in their local storage.</p>
                     <input type="text" id="syncCodeInput" placeholder="Enter 6-digit sync code (e.g., ABC123)" class="settings-input" maxlength="6" style="text-transform: uppercase;">
                     <button id="joinSyncGroup" class="join-btn">Join Sync Group</button>
                 </div>
@@ -92,7 +92,7 @@
                 
                 <div class="settings-section">
                     <h4>Create New Sync Group</h4>
-                    <p class="settings-help">Create a new sync code to share with others. This creates a public Gist on GitHub for syncing data:</p>
+                    <p class="settings-help">Create a sync code for sharing data between devices. Use the same code on multiple devices to keep them in sync:</p>
                     <button id="createSyncGroup" class="create-btn">Create New Sync Code</button>
                     <div id="newSyncCode" class="sync-code-display hidden">
                         <p>Your sync code:</p>
@@ -100,7 +100,7 @@
                             <span id="generatedCode"></span>
                             <button id="copySyncCode" class="copy-btn" title="Copy to clipboard">📋</button>
                         </div>
-                        <p class="settings-help">Share this code with others so they can sync with your gallery. Anyone with this code can view and modify your images.</p>
+                        <p class="settings-help">Use this code on your other devices to sync data. The sync works through browser localStorage on each device.</p>
                     </div>
                 </div>
                 
