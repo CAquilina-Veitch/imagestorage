@@ -1,320 +1,424 @@
-class ImageGallery {
+class DocumentGallery {
     constructor() {
-        this.imageData = {};
-        this.currentCode = '';
+        this.documents = {};
+        this.currentDocumentId = null;
         this.init();
     }
 
     init() {
-        this.loadImageData();
+        this.loadDocuments();
         this.bindEvents();
-        this.loadFromLocalStorage();
+        this.renderDocumentList();
     }
 
     bindEvents() {
-        document.getElementById('submitCode').addEventListener('click', () => this.submitCode());
-        document.getElementById('clearCode').addEventListener('click', () => this.clearCode());
-        document.getElementById('codeInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.submitCode();
-        });
+        // Document management
+        document.getElementById('newDocumentBtn').addEventListener('click', () => this.createNewDocument());
         
-        document.getElementById('toggleAdmin').addEventListener('click', () => this.toggleAdmin());
-        document.getElementById('uploadImages').addEventListener('click', () => this.uploadImages());
+        // Upload modal
+        document.getElementById('uploadBtn').addEventListener('click', () => this.openUploadModal());
+        document.getElementById('closeModal').addEventListener('click', () => this.closeUploadModal());
+        document.getElementById('selectFiles').addEventListener('click', () => this.triggerFileSelect());
+        document.getElementById('imageUpload').addEventListener('change', (e) => this.handleFileSelect(e));
+        
+        // Download
         document.getElementById('downloadAll').addEventListener('click', () => this.downloadAllImages());
         
-        document.getElementById('imageUpload').addEventListener('change', (e) => this.previewImages(e));
+        // Upload area drag and drop
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('click', () => this.triggerFileSelect());
+        uploadArea.addEventListener('dragover', (e) => this.handleDragOver(e));
+        uploadArea.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+        uploadArea.addEventListener('drop', (e) => this.handleDrop(e));
+        
+        // Close modal on outside click
+        document.getElementById('uploadModal').addEventListener('click', (e) => {
+            if (e.target.id === 'uploadModal') {
+                this.closeUploadModal();
+            }
+        });
     }
 
-    async loadImageData() {
-        try {
-            const response = await fetch('./data/images.json');
-            if (response.ok) {
-                this.imageData = await response.json();
-            } else {
-                this.imageData = {};
-                this.showMessage('No image data found. Use admin panel to upload images.', 'info');
-            }
-        } catch (error) {
-            this.imageData = this.loadFromLocalStorage() || {};
-            if (Object.keys(this.imageData).length === 0) {
-                this.showMessage('No image data found. Use admin panel to upload images.', 'info');
-            }
-        }
-    }
-
-    loadFromLocalStorage() {
-        const stored = localStorage.getItem('imageGalleryData');
+    loadDocuments() {
+        const stored = localStorage.getItem('documentGalleryData');
         if (stored) {
             try {
-                this.imageData = JSON.parse(stored);
-                return this.imageData;
+                this.documents = JSON.parse(stored);
             } catch (e) {
-                console.error('Error loading from localStorage:', e);
+                console.error('Error loading documents:', e);
+                this.documents = {};
             }
         }
-        return {};
     }
 
-    saveToLocalStorage() {
-        localStorage.setItem('imageGalleryData', JSON.stringify(this.imageData));
+    saveDocuments() {
+        localStorage.setItem('documentGalleryData', JSON.stringify(this.documents));
     }
 
-    submitCode() {
-        const codeInput = document.getElementById('codeInput');
-        const code = codeInput.value.trim();
-        
-        if (!code) {
-            this.showMessage('Please enter a code', 'error');
+    generateId() {
+        return 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    createNewDocument() {
+        const name = prompt('Enter document name:');
+        if (!name || !name.trim()) return;
+
+        const id = this.generateId();
+        this.documents[id] = {
+            name: name.trim(),
+            images: [],
+            createdDate: new Date().toISOString()
+        };
+
+        this.saveDocuments();
+        this.renderDocumentList();
+        this.selectDocument(id);
+        this.showMessage(`Created document: "${name}"`, 'success');
+    }
+
+    selectDocument(documentId) {
+        this.currentDocumentId = documentId;
+        this.renderDocumentList();
+        this.updateHeaderAndButtons();
+        this.displayImages();
+    }
+
+    updateHeaderAndButtons() {
+        const titleElement = document.getElementById('documentTitle');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const downloadBtn = document.getElementById('downloadAll');
+
+        if (this.currentDocumentId && this.documents[this.currentDocumentId]) {
+            const doc = this.documents[this.currentDocumentId];
+            titleElement.textContent = doc.name;
+            uploadBtn.disabled = false;
+            downloadBtn.disabled = doc.images.length === 0;
+        } else {
+            titleElement.textContent = 'Select a Document';
+            uploadBtn.disabled = true;
+            downloadBtn.disabled = true;
+        }
+    }
+
+    renderDocumentList() {
+        const documentList = document.getElementById('documentList');
+        const documentIds = Object.keys(this.documents);
+
+        if (documentIds.length === 0) {
+            documentList.innerHTML = `
+                <div class="empty-documents">
+                    <p>No documents yet</p>
+                    <p>Create your first document to get started</p>
+                </div>
+            `;
             return;
         }
 
-        this.currentCode = code;
-        this.displayImages(code);
+        documentList.innerHTML = '';
+        
+        documentIds.forEach(id => {
+            const doc = this.documents[id];
+            const documentItem = document.createElement('div');
+            documentItem.className = `document-item ${this.currentDocumentId === id ? 'active' : ''}`;
+            
+            documentItem.innerHTML = `
+                <div class="document-name">
+                    <span class="name-display">${doc.name}</span>
+                    <input type="text" class="name-input hidden" value="${doc.name}">
+                    <span class="document-count">(${doc.images.length})</span>
+                </div>
+                <div class="document-actions">
+                    <button class="rename-btn" title="Rename">✏️</button>
+                    <button class="delete-btn" title="Delete">🗑️</button>
+                </div>
+            `;
+
+            // Select document on click
+            documentItem.addEventListener('click', (e) => {
+                if (!e.target.closest('.document-actions') && !e.target.classList.contains('name-input')) {
+                    this.selectDocument(id);
+                }
+            });
+
+            // Rename functionality
+            const renameBtn = documentItem.querySelector('.rename-btn');
+            const nameDisplay = documentItem.querySelector('.name-display');
+            const nameInput = documentItem.querySelector('.name-input');
+
+            renameBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.startRename(id, nameDisplay, nameInput);
+            });
+
+            nameInput.addEventListener('blur', () => {
+                this.finishRename(id, nameDisplay, nameInput);
+            });
+
+            nameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.finishRename(id, nameDisplay, nameInput);
+                }
+                if (e.key === 'Escape') {
+                    this.cancelRename(nameDisplay, nameInput);
+                }
+            });
+
+            // Delete functionality
+            const deleteBtn = documentItem.querySelector('.delete-btn');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteDocument(id);
+            });
+
+            documentList.appendChild(documentItem);
+        });
     }
 
-    clearCode() {
-        document.getElementById('codeInput').value = '';
-        this.currentCode = '';
-        this.clearGallery();
-        this.hideDownloadSection();
-        this.showMessage('', '');
+    startRename(documentId, nameDisplay, nameInput) {
+        nameDisplay.classList.add('hidden');
+        nameInput.classList.remove('hidden');
+        nameInput.focus();
+        nameInput.select();
     }
 
-    displayImages(code) {
+    finishRename(documentId, nameDisplay, nameInput) {
+        const newName = nameInput.value.trim();
+        if (newName && newName !== this.documents[documentId].name) {
+            this.documents[documentId].name = newName;
+            this.saveDocuments();
+            this.updateHeaderAndButtons();
+            this.showMessage(`Renamed document to: "${newName}"`, 'success');
+        }
+        
+        nameDisplay.textContent = this.documents[documentId].name;
+        nameDisplay.classList.remove('hidden');
+        nameInput.classList.add('hidden');
+    }
+
+    cancelRename(nameDisplay, nameInput) {
+        nameDisplay.classList.remove('hidden');
+        nameInput.classList.add('hidden');
+    }
+
+    deleteDocument(documentId) {
+        const doc = this.documents[documentId];
+        if (!confirm(`Are you sure you want to delete "${doc.name}" and all its images?`)) {
+            return;
+        }
+
+        delete this.documents[documentId];
+        this.saveDocuments();
+
+        if (this.currentDocumentId === documentId) {
+            this.currentDocumentId = null;
+        }
+
+        this.renderDocumentList();
+        this.updateHeaderAndButtons();
+        this.displayImages();
+        this.showMessage(`Deleted document: "${doc.name}"`, 'info');
+    }
+
+    displayImages() {
         const gallery = document.getElementById('imageGallery');
-        const images = this.imageData[code];
+        
+        if (!this.currentDocumentId || !this.documents[this.currentDocumentId]) {
+            gallery.innerHTML = `
+                <div class="welcome-message">
+                    <h3>Welcome to Document Image Gallery</h3>
+                    <p>Create a new document or select an existing one to manage your images</p>
+                </div>
+            `;
+            return;
+        }
 
-        if (!images || images.length === 0) {
-            this.showMessage(`No images found for code: "${code}"`, 'error');
-            this.clearGallery();
-            this.hideDownloadSection();
+        const doc = this.documents[this.currentDocumentId];
+        const images = doc.images;
+
+        if (images.length === 0) {
+            gallery.innerHTML = `
+                <div class="welcome-message">
+                    <h3>No images in "${doc.name}"</h3>
+                    <p>Click "Upload Images" to add photos to this document</p>
+                </div>
+            `;
             return;
         }
 
         gallery.innerHTML = '';
-        let loadedCount = 0;
-        const totalImages = images.length;
-
+        
         images.forEach((imageInfo, index) => {
             const imageItem = document.createElement('div');
             imageItem.className = 'image-item';
             
             const img = document.createElement('img');
-            img.src = imageInfo.url || imageInfo.path || imageInfo;
-            img.alt = imageInfo.name || `Image ${index + 1}`;
+            img.src = imageInfo.url;
+            img.alt = imageInfo.name;
             img.loading = 'lazy';
             
-            img.onload = () => {
-                loadedCount++;
-                if (loadedCount === totalImages) {
-                    this.showMessage(`Loaded ${totalImages} image(s) for code: "${code}"`, 'success');
-                    this.showDownloadSection();
-                }
-            };
+            const imageActions = document.createElement('div');
+            imageActions.className = 'image-actions';
+            imageActions.innerHTML = `
+                <button onclick="documentGallery.deleteImage(${index})" title="Delete">🗑️</button>
+            `;
             
-            img.onerror = () => {
-                imageItem.innerHTML = `<div class="error-placeholder">Failed to load image</div>`;
-                loadedCount++;
-                if (loadedCount === totalImages) {
-                    this.showMessage(`Loaded ${totalImages} image(s) for code: "${code}" (some failed)`, 'info');
-                    this.showDownloadSection();
-                }
-            };
-
             const imageInfo_div = document.createElement('div');
             imageInfo_div.className = 'image-info';
             imageInfo_div.innerHTML = `
-                <div><strong>${imageInfo.name || `Image ${index + 1}`}</strong></div>
-                <div>Code: ${code}</div>
+                <div><strong>${imageInfo.name}</strong></div>
+                <div>Size: ${this.formatFileSize(imageInfo.size)}</div>
                 ${imageInfo.uploadDate ? `<div>Uploaded: ${new Date(imageInfo.uploadDate).toLocaleDateString()}</div>` : ''}
             `;
 
             imageItem.appendChild(img);
+            imageItem.appendChild(imageActions);
             imageItem.appendChild(imageInfo_div);
             gallery.appendChild(imageItem);
         });
+
+        this.updateHeaderAndButtons();
     }
 
-    clearGallery() {
-        const gallery = document.getElementById('imageGallery');
-        gallery.innerHTML = '<div class="empty-gallery">Enter a code to view images</div>';
-    }
+    deleteImage(index) {
+        if (!this.currentDocumentId || !confirm('Are you sure you want to delete this image?')) {
+            return;
+        }
 
-    showDownloadSection() {
-        document.getElementById('downloadSection').classList.remove('hidden');
-    }
-
-    hideDownloadSection() {
-        document.getElementById('downloadSection').classList.add('hidden');
-    }
-
-    toggleAdmin() {
-        const panel = document.getElementById('adminPanel');
-        panel.classList.toggle('hidden');
+        const doc = this.documents[this.currentDocumentId];
+        const deletedImage = doc.images[index];
+        doc.images.splice(index, 1);
         
-        if (!panel.classList.contains('hidden')) {
-            this.refreshImageList();
-        }
+        this.saveDocuments();
+        this.displayImages();
+        this.renderDocumentList();
+        this.showMessage(`Deleted image: ${deletedImage.name}`, 'info');
     }
 
-    refreshImageList() {
-        const imageList = document.getElementById('imageList');
-        imageList.innerHTML = '';
+    openUploadModal() {
+        if (!this.currentDocumentId) return;
+        document.getElementById('uploadModal').classList.remove('hidden');
+    }
 
-        if (Object.keys(this.imageData).length === 0) {
-            imageList.innerHTML = '<p>No images uploaded yet.</p>';
+    closeUploadModal() {
+        document.getElementById('uploadModal').classList.add('hidden');
+        this.resetUploadModal();
+    }
+
+    resetUploadModal() {
+        document.getElementById('imageUpload').value = '';
+        document.getElementById('uploadProgress').classList.add('hidden');
+        document.getElementById('uploadArea').classList.remove('hidden');
+        document.getElementById('progressFill').style.width = '0%';
+    }
+
+    triggerFileSelect() {
+        document.getElementById('imageUpload').click();
+    }
+
+    handleFileSelect(event) {
+        const files = Array.from(event.target.files);
+        this.processFiles(files);
+    }
+
+    handleDragOver(e) {
+        e.preventDefault();
+        e.currentTarget.classList.add('dragover');
+    }
+
+    handleDragLeave(e) {
+        e.currentTarget.classList.remove('dragover');
+    }
+
+    handleDrop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('dragover');
+        const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+        this.processFiles(files);
+    }
+
+    processFiles(files) {
+        if (!this.currentDocumentId || files.length === 0) return;
+
+        const imageFiles = files.filter(file => file.type.startsWith('image/'));
+        if (imageFiles.length === 0) {
+            this.showMessage('No valid image files selected', 'error');
             return;
         }
 
-        Object.keys(this.imageData).forEach(code => {
-            const codeSection = document.createElement('div');
-            codeSection.style.marginBottom = '15px';
-            codeSection.style.padding = '10px';
-            codeSection.style.border = '1px solid #ddd';
-            codeSection.style.borderRadius = '5px';
-
-            const codeHeader = document.createElement('h4');
-            codeHeader.textContent = `Code: ${code} (${this.imageData[code].length} images)`;
-            codeSection.appendChild(codeHeader);
-
-            const deleteButton = document.createElement('button');
-            deleteButton.textContent = 'Delete Code';
-            deleteButton.style.marginLeft = '10px';
-            deleteButton.style.background = '#dc3545';
-            deleteButton.onclick = () => this.deleteCode(code);
-            codeHeader.appendChild(deleteButton);
-
-            this.imageData[code].forEach((img, index) => {
-                const imgItem = document.createElement('div');
-                imgItem.style.marginLeft = '20px';
-                imgItem.innerHTML = `
-                    <span>${img.name || `Image ${index + 1}`}</span>
-                    <button onclick="imageGallery.deleteImage('${code}', ${index})" style="margin-left: 10px; background: #dc3545;">Delete</button>
-                `;
-                codeSection.appendChild(imgItem);
-            });
-
-            imageList.appendChild(codeSection);
-        });
-    }
-
-    deleteCode(code) {
-        if (confirm(`Are you sure you want to delete all images for code "${code}"?`)) {
-            delete this.imageData[code];
-            this.saveToLocalStorage();
-            this.refreshImageList();
-            this.showMessage(`Deleted all images for code: "${code}"`, 'info');
-            
-            if (this.currentCode === code) {
-                this.clearCode();
-            }
-        }
-    }
-
-    deleteImage(code, index) {
-        if (confirm('Are you sure you want to delete this image?')) {
-            this.imageData[code].splice(index, 1);
-            if (this.imageData[code].length === 0) {
-                delete this.imageData[code];
-            }
-            this.saveToLocalStorage();
-            this.refreshImageList();
-            this.showMessage('Image deleted', 'info');
-            
-            if (this.currentCode === code) {
-                this.displayImages(code);
-            }
-        }
-    }
-
-    previewImages(event) {
-        const files = event.target.files;
-        const code = document.getElementById('newImageCode').value.trim();
+        // Show progress
+        document.getElementById('uploadArea').classList.add('hidden');
+        document.getElementById('uploadProgress').classList.remove('hidden');
         
-        if (!code) {
-            this.showMessage('Please enter a code for the images', 'error');
-            return;
-        }
-
-        if (files.length === 0) return;
-
-        this.showMessage(`Selected ${files.length} file(s) for code: "${code}"`, 'info');
-    }
-
-    uploadImages() {
-        const code = document.getElementById('newImageCode').value.trim();
-        const fileInput = document.getElementById('imageUpload');
-        const files = fileInput.files;
-
-        if (!code) {
-            this.showMessage('Please enter a code for the images', 'error');
-            return;
-        }
-
-        if (files.length === 0) {
-            this.showMessage('Please select at least one image', 'error');
-            return;
-        }
-
-        if (!this.imageData[code]) {
-            this.imageData[code] = [];
-        }
-
+        const doc = this.documents[this.currentDocumentId];
         let processedCount = 0;
-        const totalFiles = files.length;
+        const totalFiles = imageFiles.length;
 
-        Array.from(files).forEach((file, index) => {
-            if (file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const imageInfo = {
-                        name: file.name,
-                        url: e.target.result,
-                        uploadDate: new Date().toISOString(),
-                        size: file.size,
-                        type: file.type
-                    };
-                    
-                    this.imageData[code].push(imageInfo);
-                    processedCount++;
-                    
-                    if (processedCount === totalFiles) {
-                        this.saveToLocalStorage();
-                        this.showMessage(`Successfully uploaded ${totalFiles} image(s) for code: "${code}"`, 'success');
-                        this.refreshImageList();
-                        
-                        document.getElementById('newImageCode').value = '';
-                        fileInput.value = '';
-                    }
+        imageFiles.forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const imageInfo = {
+                    name: file.name,
+                    url: e.target.result,
+                    uploadDate: new Date().toISOString(),
+                    size: file.size,
+                    type: file.type
                 };
-                reader.readAsDataURL(file);
-            } else {
+                
+                doc.images.push(imageInfo);
                 processedCount++;
-                this.showMessage(`Skipped non-image file: ${file.name}`, 'error');
-            }
+                
+                // Update progress
+                const progress = (processedCount / totalFiles) * 100;
+                document.getElementById('progressFill').style.width = progress + '%';
+                document.getElementById('progressText').textContent = `Uploading... ${processedCount}/${totalFiles}`;
+                
+                if (processedCount === totalFiles) {
+                    this.saveDocuments();
+                    this.displayImages();
+                    this.renderDocumentList();
+                    this.showMessage(`Successfully uploaded ${totalFiles} image(s)`, 'success');
+                    
+                    setTimeout(() => {
+                        this.closeUploadModal();
+                    }, 1000);
+                }
+            };
+            reader.readAsDataURL(file);
         });
     }
 
     downloadAllImages() {
-        if (!this.currentCode || !this.imageData[this.currentCode]) {
+        if (!this.currentDocumentId) return;
+        
+        const doc = this.documents[this.currentDocumentId];
+        const images = doc.images;
+        
+        if (images.length === 0) {
             this.showMessage('No images to download', 'error');
             return;
         }
 
-        const images = this.imageData[this.currentCode];
         images.forEach((imageInfo, index) => {
             const link = document.createElement('a');
-            link.href = imageInfo.url || imageInfo.path || imageInfo;
-            link.download = imageInfo.name || `image_${this.currentCode}_${index + 1}`;
+            link.href = imageInfo.url;
+            link.download = imageInfo.name || `${doc.name}_image_${index + 1}`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         });
 
-        this.showMessage(`Downloaded ${images.length} image(s)`, 'success');
+        this.showMessage(`Downloaded ${images.length} image(s) from "${doc.name}"`, 'success');
     }
 
-    showMessage(message, type) {
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    showMessage(message, type = 'info') {
         const statusDiv = document.getElementById('statusMessage');
         statusDiv.textContent = message;
         statusDiv.className = `status-message ${type}`;
@@ -332,8 +436,9 @@ class ImageGallery {
     }
 }
 
-let imageGallery;
+// Global instance for button onclick handlers
+let documentGallery;
 
 document.addEventListener('DOMContentLoaded', () => {
-    imageGallery = new ImageGallery();
+    documentGallery = new DocumentGallery();
 });

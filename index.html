@@ -3,43 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Code-Protected Image Gallery</title>
+    <title>Document Image Gallery</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Image Gallery</h1>
-            <p>Enter your access code to view images</p>
-        </header>
-
-        <div class="code-input-section">
-            <input type="text" id="codeInput" placeholder="Enter your code (e.g., Test code 1)" autocomplete="off">
-            <button id="submitCode">View Images</button>
-            <button id="clearCode">Clear</button>
-        </div>
-
-        <div class="admin-section">
-            <button id="toggleAdmin">Admin Panel</button>
-            <div id="adminPanel" class="hidden">
-                <h3>Upload New Image</h3>
-                <input type="text" id="newImageCode" placeholder="Code for this image">
-                <input type="file" id="imageUpload" accept="image/*" multiple>
-                <button id="uploadImages">Upload</button>
-                
-                <h3>Manage Images</h3>
-                <div id="imageList"></div>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Documents</h2>
+                <button id="newDocumentBtn" class="new-document-btn">+ New Document</button>
+            </div>
+            
+            <div class="document-list" id="documentList">
+                <div class="empty-documents">
+                    <p>No documents yet</p>
+                    <p>Create your first document to get started</p>
+                </div>
             </div>
         </div>
 
-        <div class="status-message" id="statusMessage"></div>
+        <div class="main-content">
+            <div class="content-header">
+                <h1 id="documentTitle">Select a Document</h1>
+                <div class="header-actions">
+                    <button id="uploadBtn" class="upload-btn" disabled>📁 Upload Images</button>
+                    <button id="downloadAll" class="download-btn" disabled>📥 Download All</button>
+                </div>
+            </div>
 
-        <div class="gallery-section">
-            <div id="imageGallery" class="image-grid"></div>
+            <div class="status-message" id="statusMessage"></div>
+
+            <div class="gallery-section">
+                <div id="imageGallery" class="image-grid">
+                    <div class="welcome-message">
+                        <h3>Welcome to Document Image Gallery</h3>
+                        <p>Create a new document or select an existing one to manage your images</p>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <div class="download-section" id="downloadSection" class="hidden">
-            <button id="downloadAll">Download All Images</button>
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Images</h3>
+                <button id="closeModal" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="uploadArea">
+                    <p>Drag and drop images here or click to select</p>
+                    <input type="file" id="imageUpload" accept="image/*" multiple style="display: none;">
+                    <button id="selectFiles" class="select-files-btn">Select Files</button>
+                </div>
+                <div id="uploadProgress" class="hidden">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <p id="progressText">Uploading...</p>
+                </div>
+            </div>
         </div>
     </div>
 
