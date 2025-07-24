@@ -761,22 +761,38 @@ class DocumentGallery {
                 if (checkResponse.ok) {
                     const responseText = await checkResponse.text();
                     console.log('API Response length:', responseText.length);
+                    console.log('API Response preview:', responseText.substring(0, 200));
                     
                     if (responseText && responseText.trim()) {
-                        const result = JSON.parse(responseText);
-                        sha = result.sha;
-                        
-                        if (result.content) {
-                            const decodedContent = atob(result.content);
-                            console.log('Decoded content length:', decodedContent.length);
+                        try {
+                            const result = JSON.parse(responseText);
+                            sha = result.sha;
+                            console.log('Got SHA:', sha);
                             
-                            if (decodedContent && decodedContent.trim()) {
-                                remoteData = JSON.parse(decodedContent);
+                            if (result.content) {
+                                const decodedContent = atob(result.content);
+                                console.log('Decoded content length:', decodedContent.length);
+                                console.log('Decoded content preview:', decodedContent.substring(0, 100));
+                                
+                                if (decodedContent && decodedContent.trim()) {
+                                    try {
+                                        remoteData = JSON.parse(decodedContent);
+                                        console.log('Successfully parsed remote data');
+                                    } catch (contentParseError) {
+                                        console.error('Failed to parse file content:', contentParseError);
+                                        console.log('Raw content:', decodedContent);
+                                    }
+                                }
                             }
+                        } catch (responseParseError) {
+                            console.error('Failed to parse API response:', responseParseError);
+                            console.log('Raw response:', responseText);
                         }
+                    } else {
+                        console.log('Empty API response');
                     }
                 } else {
-                    console.log('File does not exist yet, will create new');
+                    console.log('File does not exist yet, will create new. Status:', checkResponse.status);
                 }
             } catch (fetchError) {
                 console.log('Error fetching existing data:', fetchError.message);
@@ -839,13 +855,19 @@ class DocumentGallery {
 
             if (!uploadResponse.ok) {
                 const errorText = await uploadResponse.text();
+                console.log('Upload error response length:', errorText.length);
                 console.log('Upload error response:', errorText);
                 
                 let errorMessage = 'Failed to sync data';
                 try {
-                    const errorJson = JSON.parse(errorText);
-                    errorMessage = errorJson.message || errorMessage;
-                } catch (e) {
+                    if (errorText && errorText.trim()) {
+                        const errorJson = JSON.parse(errorText);
+                        errorMessage = errorJson.message || errorMessage;
+                    } else {
+                        errorMessage = `HTTP ${uploadResponse.status}: ${uploadResponse.statusText}`;
+                    }
+                } catch (parseError) {
+                    console.error('Failed to parse error response:', parseError);
                     errorMessage = `HTTP ${uploadResponse.status}: ${uploadResponse.statusText}`;
                 }
                 throw new Error(errorMessage);
