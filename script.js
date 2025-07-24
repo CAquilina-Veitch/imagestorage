@@ -2,7 +2,7 @@ class DocumentGallery {
     constructor() {
         this.documents = {};
         this.currentDocumentId = null;
-        this.githubSettings = this.loadGitHubSettings();
+        this.syncSettings = this.loadSyncSettings();
         this.isUploading = false;  // Track upload state
         this.init();
     }
@@ -26,12 +26,15 @@ class DocumentGallery {
         // Download
         document.getElementById('downloadAll').addEventListener('click', () => this.downloadAllImages());
         
-        // GitHub Sync
-        document.getElementById('syncBtn').addEventListener('click', () => this.syncWithGitHub());
+        // Sync
+        document.getElementById('syncBtn').addEventListener('click', () => this.syncData());
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettingsModal());
         document.getElementById('closeSettingsModal').addEventListener('click', () => this.closeSettingsModal());
-        document.getElementById('testConnection').addEventListener('click', () => this.testGitHubConnection());
-        document.getElementById('saveSettings').addEventListener('click', () => this.saveGitHubSettings());
+        document.getElementById('joinSyncGroup').addEventListener('click', () => this.joinSyncGroup());
+        document.getElementById('createSyncGroup').addEventListener('click', () => this.createSyncGroup());
+        document.getElementById('copySyncCode').addEventListener('click', () => this.copySyncCode('generatedCode'));
+        document.getElementById('copyCurrentCode').addEventListener('click', () => this.copySyncCode('currentSyncCode'));
+        document.getElementById('leaveSyncGroup').addEventListener('click', () => this.leaveSyncGroup());
         
         // Upload area drag and drop
         const uploadArea = document.getElementById('uploadArea');
@@ -477,51 +480,46 @@ class DocumentGallery {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    loadGitHubSettings() {
-        const stored = localStorage.getItem('githubSettings');
+    loadSyncSettings() {
+        const stored = localStorage.getItem('syncSettings');
         if (stored) {
             try {
                 return JSON.parse(stored);
             } catch (e) {
-                console.error('Error loading GitHub settings:', e);
+                console.error('Error loading sync settings:', e);
             }
         }
         return {
-            owner: '',
-            repo: '',
-            branch: 'main',
-            token: ''
+            syncCode: '',
+            gistId: '',
+            isActive: false
         };
     }
 
-    saveGitHubSettings() {
-        const settings = {
-            owner: document.getElementById('repoOwner').value.trim(),
-            repo: document.getElementById('repoName').value.trim(),
-            branch: document.getElementById('repoBranch').value.trim() || 'main',
-            token: document.getElementById('githubToken').value.trim()
-        };
+    saveSyncSettings() {
+        localStorage.setItem('syncSettings', JSON.stringify(this.syncSettings));
+    }
 
-        if (!settings.owner || !settings.repo || !settings.token) {
-            this.showConnectionStatus('Please fill in all required fields', 'error');
-            return;
+    generateSyncCode() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let result = '';
+        for (let i = 0; i < 6; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-
-        this.githubSettings = settings;
-        localStorage.setItem('githubSettings', JSON.stringify(settings));
-        this.showConnectionStatus('Settings saved successfully!', 'success');
-        
-        setTimeout(() => {
-            this.closeSettingsModal();
-        }, 1500);
+        return result;
     }
 
     openSettingsModal() {
-        // Populate current settings
-        document.getElementById('repoOwner').value = this.githubSettings.owner;
-        document.getElementById('repoName').value = this.githubSettings.repo;
-        document.getElementById('repoBranch').value = this.githubSettings.branch;
-        document.getElementById('githubToken').value = this.githubSettings.token;
+        // Show current sync status if active
+        if (this.syncSettings.isActive) {
+            document.getElementById('currentSyncCode').textContent = this.syncSettings.syncCode;
+            document.getElementById('currentSyncInfo').classList.remove('hidden');
+        } else {
+            document.getElementById('currentSyncInfo').classList.add('hidden');
+        }
+        
+        // Reset input field
+        document.getElementById('syncCodeInput').value = '';
         
         document.getElementById('settingsModal').classList.remove('hidden');
     }
@@ -530,37 +528,211 @@ class DocumentGallery {
         document.getElementById('settingsModal').classList.add('hidden');
         document.getElementById('connectionStatus').textContent = '';
         document.getElementById('connectionStatus').className = 'connection-status';
+        document.getElementById('newSyncCode').classList.add('hidden');
     }
 
-    async testGitHubConnection() {
-        const settings = {
-            owner: document.getElementById('repoOwner').value.trim(),
-            repo: document.getElementById('repoName').value.trim(),
-            branch: document.getElementById('repoBranch').value.trim() || 'main',
-            token: document.getElementById('githubToken').value.trim()
-        };
+    async createSyncGroup() {
+        try {
+            this.showConnectionStatus('Creating sync group...', 'info');
+            
+            const syncCode = this.generateSyncCode();
+            const data = {
+                documents: this.documents,
+                lastSync: new Date().toISOString(),
+                version: '1.0',
+                syncCode: syncCode
+            };
 
-        if (!settings.owner || !settings.repo || !settings.token) {
-            this.showConnectionStatus('Please fill in all required fields', 'error');
+            // Create anonymous public gist
+            const response = await fetch('https://api.github.com/gists', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: `Image Gallery Sync - ${syncCode}`,
+                    public: true,
+                    files: {
+                        'gallery-data.json': {
+                            content: JSON.stringify(data, null, 2)
+                        }
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to create sync group');
+            }
+
+            const gist = await response.json();
+            
+            // Save sync settings
+            this.syncSettings = {
+                syncCode: syncCode,
+                gistId: gist.id,
+                isActive: true
+            };
+            this.saveSyncSettings();
+
+            // Store the mapping for future use
+            this.storeSyncCodeMapping(syncCode, gist.id);
+
+            // Show the generated code
+            document.getElementById('generatedCode').textContent = syncCode;
+            document.getElementById('newSyncCode').classList.remove('hidden');
+            
+            this.showConnectionStatus(`✅ Sync group created! Code: ${syncCode}`, 'success');
+            
+        } catch (error) {
+            console.error('Create sync group error:', error);
+            this.showConnectionStatus(`❌ Failed to create sync group: ${error.message}`, 'error');
+        }
+    }
+
+    async joinSyncGroup() {
+        const syncCode = document.getElementById('syncCodeInput').value.trim().toUpperCase();
+        
+        if (!syncCode || syncCode.length !== 6) {
+            this.showConnectionStatus('Please enter a valid 6-digit sync code', 'error');
             return;
         }
 
         try {
-            const response = await fetch(`https://api.github.com/repos/${settings.owner}/${settings.repo}`, {
+            this.showConnectionStatus('Joining sync group...', 'info');
+            
+            // Since we can't easily search public gists by description,
+            // we'll need to store gist IDs locally or use a different approach
+            // For now, we'll show instructions for manual joining
+            this.showConnectionStatus('To join a sync group, you need the creator to share the full Gist URL or ID with you. GitHub doesn\'t allow searching public gists by sync code.', 'info');
+            
+            // Alternative: Check if there's a stored mapping of sync codes to gist IDs
+            const storedMappings = localStorage.getItem('syncCodeMappings');
+            if (storedMappings) {
+                const mappings = JSON.parse(storedMappings);
+                const gistId = mappings[syncCode];
+                
+                if (gistId) {
+                    await this.joinByGistId(gistId, syncCode);
+                    return;
+                }
+            }
+            
+            this.showConnectionStatus('Sync code not found in local cache. Ask the group creator to share the Gist URL directly.', 'error');
+            
+        } catch (error) {
+            console.error('Join sync group error:', error);
+            this.showConnectionStatus(`❌ Failed to join sync group: ${error.message}`, 'error');
+        }
+    }
+
+    async joinByGistId(gistId, syncCode) {
+        try {
+            // Verify the gist exists and has the correct sync code
+            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
                 headers: {
-                    'Authorization': `token ${settings.token}`,
                     'Accept': 'application/vnd.github.v3+json'
                 }
             });
 
-            if (response.ok) {
-                this.showConnectionStatus('✅ Connection successful!', 'success');
-            } else {
-                const error = await response.json();
-                this.showConnectionStatus(`❌ ${error.message || 'Connection failed'}`, 'error');
+            if (!response.ok) {
+                throw new Error('Gist not found or not accessible');
             }
+
+            const gist = await response.json();
+            const fileContent = gist.files['gallery-data.json'];
+            
+            if (!fileContent) {
+                throw new Error('Invalid sync group - no gallery data found');
+            }
+
+            const content = JSON.parse(fileContent.content);
+            
+            if (content.syncCode !== syncCode) {
+                throw new Error('Sync code mismatch - invalid group');
+            }
+
+            // Join the group
+            this.syncSettings = {
+                syncCode: syncCode,
+                gistId: gistId,
+                isActive: true
+            };
+            this.saveSyncSettings();
+
+            // Store the mapping for future use
+            this.storeSyncCodeMapping(syncCode, gistId);
+
+            // Update current sync info display
+            document.getElementById('currentSyncCode').textContent = syncCode;
+            document.getElementById('currentSyncInfo').classList.remove('hidden');
+            
+            this.showConnectionStatus(`✅ Successfully joined sync group: ${syncCode}`, 'success');
+            
+            // Sync data immediately
+            setTimeout(() => {
+                this.syncData();
+            }, 1000);
+            
         } catch (error) {
-            this.showConnectionStatus(`❌ Network error: ${error.message}`, 'error');
+            console.error('Join by gist ID error:', error);
+            this.showConnectionStatus(`❌ Failed to join sync group: ${error.message}`, 'error');
+        }
+    }
+
+    storeSyncCodeMapping(syncCode, gistId) {
+        const storedMappings = localStorage.getItem('syncCodeMappings');
+        let mappings = {};
+        
+        if (storedMappings) {
+            try {
+                mappings = JSON.parse(storedMappings);
+            } catch (e) {
+                console.warn('Failed to parse stored sync code mappings');
+            }
+        }
+        
+        mappings[syncCode] = gistId;
+        localStorage.setItem('syncCodeMappings', JSON.stringify(mappings));
+    }
+
+    copySyncCode(elementId) {
+        const codeElement = document.getElementById(elementId);
+        const code = codeElement.textContent;
+        
+        navigator.clipboard.writeText(code).then(() => {
+            this.showConnectionStatus('✅ Sync code copied to clipboard!', 'success');
+            setTimeout(() => {
+                this.showConnectionStatus('', '');
+            }, 2000);
+        }).catch(() => {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = code;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            this.showConnectionStatus('✅ Sync code copied!', 'success');
+        });
+    }
+
+    async leaveSyncGroup() {
+        if (confirm('Are you sure you want to leave the sync group? Your local data will remain, but you will stop syncing with others.')) {
+            this.syncSettings = {
+                syncCode: '',
+                gistId: '',
+                isActive: false
+            };
+            this.saveSyncSettings();
+            
+            document.getElementById('currentSyncInfo').classList.add('hidden');
+            this.showConnectionStatus('✅ Left sync group', 'success');
+            
+            setTimeout(() => {
+                this.closeSettingsModal();
+            }, 1500);
         }
     }
 
@@ -570,21 +742,21 @@ class DocumentGallery {
         statusEl.className = `connection-status ${type}`;
     }
 
-    async syncWithGitHub() {
-        if (!this.githubSettings.owner || !this.githubSettings.repo || !this.githubSettings.token) {
-            this.showMessage('Please configure GitHub settings first', 'error');
+    async syncData() {
+        if (!this.syncSettings.isActive) {
+            this.showMessage('Please set up sync first - click ⚙️ Setup', 'error');
             this.openSettingsModal();
             return;
         }
 
-        this.showMessage('Syncing with GitHub...', 'info');
+        this.showMessage('Syncing data...', 'info');
 
         try {
-            // First, try to download existing data
-            await this.downloadFromGitHub();
+            // First download remote data
+            await this.downloadFromGist();
             
-            // Then upload current data
-            await this.uploadToGitHub();
+            // Then upload local data
+            await this.uploadToGist();
             
             this.showMessage('✅ Sync completed successfully!', 'success');
         } catch (error) {
@@ -593,57 +765,51 @@ class DocumentGallery {
         }
     }
 
-    async downloadFromGitHub() {
-        const { owner, repo, branch, token } = this.githubSettings;
-        const filePath = 'data/gallery-data.json';
+    async downloadFromGist() {
+        if (!this.syncSettings.gistId) return;
 
         try {
-            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
+            const response = await fetch(`https://api.github.com/gists/${this.syncSettings.gistId}`, {
                 headers: {
-                    'Authorization': `token ${token}`,
                     'Accept': 'application/vnd.github.v3+json'
                 }
             });
 
             if (response.ok) {
-                const fileData = await response.json();
-                const content = JSON.parse(atob(fileData.content));
+                const gist = await response.json();
+                const fileContent = gist.files['gallery-data.json'];
                 
-                if (content.documents) {
-                    // Merge remote data with local data
-                    const remoteDocuments = content.documents;
-                    const localDocuments = this.documents;
+                if (fileContent) {
+                    const content = JSON.parse(fileContent.content);
                     
-                    // Simple merge strategy: remote wins for conflicts
-                    Object.keys(remoteDocuments).forEach(docId => {
-                        if (!localDocuments[docId] || 
-                            new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
-                            localDocuments[docId] = remoteDocuments[docId];
-                        }
-                    });
-                    
-                    this.documents = localDocuments;
-                    this.saveDocuments();
-                    this.renderDocumentList();
-                    this.displayImages();
+                    if (content.documents) {
+                        // Merge remote data with local data
+                        const remoteDocuments = content.documents;
+                        const localDocuments = this.documents;
+                        
+                        // Simple merge strategy: remote wins for conflicts based on lastModified
+                        Object.keys(remoteDocuments).forEach(docId => {
+                            if (!localDocuments[docId] || 
+                                new Date(remoteDocuments[docId].lastModified || 0) > new Date(localDocuments[docId].lastModified || 0)) {
+                                localDocuments[docId] = remoteDocuments[docId];
+                            }
+                        });
+                        
+                        this.documents = localDocuments;
+                        this.saveDocuments();
+                        this.renderDocumentList();
+                        this.displayImages();
+                    }
                 }
-            } else if (response.status !== 404) {
-                // 404 is fine (file doesn't exist yet), other errors are problems
-                const error = await response.json();
-                throw new Error(error.message || 'Failed to download from GitHub');
             }
         } catch (error) {
-            if (error.message.includes('404')) {
-                // File doesn't exist yet, that's fine
-                return;
-            }
-            throw error;
+            console.warn('Download from gist failed:', error);
+            // Don't throw error - sync should continue with upload
         }
     }
 
-    async uploadToGitHub() {
-        const { owner, repo, branch, token } = this.githubSettings;
-        const filePath = 'data/gallery-data.json';
+    async uploadToGist() {
+        if (!this.syncSettings.gistId) return;
 
         // Add lastModified timestamps
         Object.keys(this.documents).forEach(docId => {
@@ -653,52 +819,29 @@ class DocumentGallery {
         const data = {
             documents: this.documents,
             lastSync: new Date().toISOString(),
-            version: '1.0'
+            version: '1.0',
+            syncCode: this.syncSettings.syncCode
         };
 
-        const content = btoa(JSON.stringify(data, null, 2));
-
         try {
-            // Check if file exists to get SHA
-            let sha = null;
-            try {
-                const existingResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, {
-                    headers: {
-                        'Authorization': `token ${token}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                });
-                if (existingResponse.ok) {
-                    const existingFile = await existingResponse.json();
-                    sha = existingFile.sha;
-                }
-            } catch (e) {
-                // File doesn't exist, that's fine
-            }
-
-            const uploadData = {
-                message: `Update gallery data - ${new Date().toISOString()}`,
-                content: content,
-                branch: branch
-            };
-
-            if (sha) {
-                uploadData.sha = sha;
-            }
-
-            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
-                method: 'PUT',
+            const response = await fetch(`https://api.github.com/gists/${this.syncSettings.gistId}`, {
+                method: 'PATCH',
                 headers: {
-                    'Authorization': `token ${token}`,
                     'Accept': 'application/vnd.github.v3+json',
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(uploadData)
+                body: JSON.stringify({
+                    files: {
+                        'gallery-data.json': {
+                            content: JSON.stringify(data, null, 2)
+                        }
+                    }
+                })
             });
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.message || 'Failed to upload to GitHub');
+                throw new Error(error.message || 'Failed to upload to sync group');
             }
         } catch (error) {
             throw new Error(`Upload failed: ${error.message}`);

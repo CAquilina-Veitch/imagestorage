@@ -75,26 +75,44 @@
     <div id="settingsModal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>GitHub Sync Setup</h3>
+                <h3>Sync Setup</h3>
                 <button id="closeSettingsModal" class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="settings-section">
-                    <h4>Repository Information</h4>
-                    <input type="text" id="repoOwner" placeholder="GitHub username (e.g., yourusername)" class="settings-input">
-                    <input type="text" id="repoName" placeholder="Repository name (e.g., imagestorage)" class="settings-input">
-                    <input type="text" id="repoBranch" placeholder="Branch (default: main)" class="settings-input" value="main">
+                    <h4>Join Existing Sync Group</h4>
+                    <p class="settings-help">Enter a sync code shared by someone else to join their gallery. Note: Sync codes work through a local cache system - you may need to create a new group if the code isn't found.</p>
+                    <input type="text" id="syncCodeInput" placeholder="Enter 6-digit sync code (e.g., ABC123)" class="settings-input" maxlength="6" style="text-transform: uppercase;">
+                    <button id="joinSyncGroup" class="join-btn">Join Sync Group</button>
+                </div>
+                
+                <div class="settings-divider">
+                    <span>OR</span>
                 </div>
                 
                 <div class="settings-section">
-                    <h4>Access Token</h4>
-                    <p class="settings-help">Create a Personal Access Token with 'repo' permissions at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></p>
-                    <input type="password" id="githubToken" placeholder="GitHub Personal Access Token" class="settings-input">
+                    <h4>Create New Sync Group</h4>
+                    <p class="settings-help">Create a new sync code to share with others. This creates a public Gist on GitHub for syncing data:</p>
+                    <button id="createSyncGroup" class="create-btn">Create New Sync Code</button>
+                    <div id="newSyncCode" class="sync-code-display hidden">
+                        <p>Your sync code:</p>
+                        <div class="sync-code-box">
+                            <span id="generatedCode"></span>
+                            <button id="copySyncCode" class="copy-btn" title="Copy to clipboard">📋</button>
+                        </div>
+                        <p class="settings-help">Share this code with others so they can sync with your gallery. Anyone with this code can view and modify your images.</p>
+                    </div>
                 </div>
                 
-                <div class="settings-actions">
-                    <button id="testConnection" class="test-btn">Test Connection</button>
-                    <button id="saveSettings" class="save-btn">Save Settings</button>
+                <div class="current-sync-status">
+                    <div id="currentSyncInfo" class="hidden">
+                        <h4>Current Sync Group</h4>
+                        <div class="sync-code-box">
+                            <span id="currentSyncCode"></span>
+                            <button id="copyCurrentCode" class="copy-btn" title="Copy to clipboard">📋</button>
+                            <button id="leaveSyncGroup" class="leave-btn" title="Leave sync group">🚪</button>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="connectionStatus" class="connection-status"></div>

@@ -205,6 +205,117 @@ body {
     border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+/* Sync Code UI */
+.settings-divider {
+    text-align: center;
+    margin: 20px 0;
+    position: relative;
+    color: #999999;
+}
+
+.settings-divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #555555;
+}
+
+.settings-divider span {
+    background: #404040;
+    padding: 0 15px;
+    position: relative;
+    z-index: 1;
+}
+
+.join-btn, .create-btn {
+    width: 100%;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 44px;
+    margin-top: 8px;
+}
+
+.join-btn {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: white;
+}
+
+.join-btn:hover {
+    background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+}
+
+.create-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.create-btn:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.sync-code-display {
+    margin-top: 16px;
+    padding: 16px;
+    background: #2a2a2a;
+    border-radius: 8px;
+    border: 1px solid #555555;
+}
+
+.sync-code-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    padding: 12px;
+    background: #1a1a1a;
+    border-radius: 6px;
+    border: 1px solid #666666;
+}
+
+.sync-code-box span {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #ffffff;
+    letter-spacing: 2px;
+}
+
+.copy-btn, .leave-btn {
+    background: #555555;
+    color: #ffffff;
+    border: none;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s ease;
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.copy-btn:hover {
+    background: #666666;
+}
+
+.leave-btn:hover {
+    background: rgba(239, 68, 68, 0.8);
+}
+
+.current-sync-status {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #555555;
+}
+
 .document-list {
     flex: 1;
     padding: 16px;
