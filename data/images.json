@@ -1,0 +1,20 @@
+{
+  "Test code 1": [
+    {
+      "name": "sample1.jpg",
+      "path": "./images/sample1.jpg",
+      "uploadDate": "2024-01-01T00:00:00.000Z",
+      "size": 102400,
+      "type": "image/jpeg"
+    }
+  ],
+  "demo": [
+    {
+      "name": "demo-image.png",
+      "path": "./images/demo-image.png",
+      "uploadDate": "2024-01-01T00:00:00.000Z",
+      "size": 51200,
+      "type": "image/png"
+    }
+  ]
+}
